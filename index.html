@@ -11305,27 +11305,111 @@ var I = {
 var PH = {}; PHASES.forEach(function (p) { PH[p.key] = p.name; });
 
 /* ---------- Ton, Vibration, Wachhalten ---------- */
-var actx = null;
-function audioInit() { if (actx) return; try { var A = window.AudioContext || window.webkitAudioContext; if (A) actx = new A(); } catch (e) { actx = null; } }
+var actx = null, alarmEl = null, alarmUrl = null, alarmTimers = [], audioReady = false, audioUnlocking = false;
+// Signal als kleine WAV-Datei im Speicher erzeugen (4 Pieptöne, ca. 1,3 s). Läuft auf iPhone/iPad
+// zuverlässiger als reine Web-Audio-Töne und wird nicht aus dem Netz geladen.
+function makeWav(seconds, tones) {
+  var rate = 22050, len = Math.round(rate * seconds), data = new Int16Array(len);
+  tones.forEach(function (tn) {
+    var a = Math.round(rate * tn[0]), n = Math.round(rate * tn[1]);
+    for (var k = 0; k < n && a + k < len; k++) {
+      var env = Math.min(1, k / (rate * 0.01), (n - k) / (rate * 0.03));
+      data[a + k] = Math.round((Math.sin(2 * Math.PI * tn[2] * k / rate) > 0 ? 1 : -1) * 0.35 * 32767 * env);
+    }
+  });
+  var buf = new ArrayBuffer(44 + len * 2), v = new DataView(buf);
+  function str(o, t) { for (var j = 0; j < t.length; j++) v.setUint8(o + j, t.charCodeAt(j)); }
+  str(0, 'RIFF'); v.setUint32(4, 36 + len * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, len * 2, true);
+  for (var m = 0; m < len; m++) v.setInt16(44 + m * 2, data[m], true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function alarmWav() { return alarmUrl || (alarmUrl = makeWav(1.3, [[0, 0.25, 880], [0.32, 0.25, 660], [0.64, 0.25, 880], [0.96, 0.25, 660]])); }
+// Bei jeder Berührung aufrufen: iOS gibt Ton nur frei, wenn er einmal durch eine Nutzeraktion gestartet wurde.
+function audioInit() {
+  try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) { }
+  try {
+    if (!actx) { var A = window.AudioContext || window.webkitAudioContext; if (A) actx = new A(); }
+    if (actx && actx.state !== 'running') actx.resume();
+  } catch (e) { }
+  if (!audioReady && !audioUnlocking) {
+    audioUnlocking = true;
+    try {
+      // Element einmal mit einer stillen Datei starten: danach darf iOS es später ohne Berührung abspielen.
+      alarmEl = alarmEl || new Audio(); alarmEl.setAttribute('playsinline', ''); alarmEl.preload = 'auto';
+      alarmEl.src = makeWav(0.1, []);
+      var pr = alarmEl.play();
+      var ok = function () { audioReady = true; audioUnlocking = false; try { alarmEl.pause(); alarmEl.src = alarmWav(); alarmEl.load(); } catch (e) { } };
+      if (pr && pr.then) pr.then(ok).catch(function () { audioUnlocking = false; }); else ok();
+    } catch (e) { audioUnlocking = false; }
+  }
+}
+function beepWebAudio() {
+  if (!actx) return;
+  if (actx.state !== 'running') { try { actx.resume(); } catch (e) { } }
+  for (var i = 0; i < 4; i++) {
+    var o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + 0.05 + i * 0.32;
+    o.type = 'square'; o.frequency.value = i % 2 ? 660 : 880; g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+    o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + 0.27);
+  }
+}
+function beepOnce() {
+  try {
+    if (alarmEl && audioReady) {
+      if (alarmEl.src !== alarmWav()) alarmEl.src = alarmWav();
+      alarmEl.currentTime = 0;
+      var pr = alarmEl.play();
+      if (pr && pr.catch) pr.catch(function () { try { beepWebAudio(); } catch (e) { } });
+      return;
+    }
+    beepWebAudio();
+  } catch (e) { try { beepWebAudio(); } catch (e2) { } }
+}
+function stopAlarm() { alarmTimers.forEach(clearTimeout); alarmTimers = []; }
+// Alarm: Signal dreimal im Abstand von 3 Sekunden, bis jemand den Bildschirm berührt.
 function beep() {
   if (st && st.muted) return;
-  try {
-    if (!actx) return; if (actx.state === 'suspended') actx.resume();
-    for (var i = 0; i < 4; i++) {
-      var o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + i * 0.32;
-      o.type = 'square'; o.frequency.value = i % 2 ? 660 : 880; g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
-      o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + 0.27);
-    }
-  } catch (e) { }
+  stopAlarm(); beepOnce();
+  alarmTimers.push(setTimeout(beepOnce, 3000), setTimeout(beepOnce, 6000));
   try { if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]); } catch (e) { }
 }
-var wakeLock = null;
+// Bildschirm wachhalten: Wake Lock, wo vorhanden. Zusätzlich ein unsichtbares, stummes Mini-Video in Endlosschleife
+// (bewährter Trick für iPhone/iPad, auf denen der Wake Lock in Home-Bildschirm-Apps nicht zuverlässig hält).
+var wakeLock = null, wakeVideo = null;
+var STILL_MP4 = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAM0bW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAl50cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAAAAAAABAAAAAAHWbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABgW1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAUFzdGJsAAAAwXN0c2QAAAAAAAAAAQAAALFhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAAN2F2Y0MBZAAK/+EAGWdkAAqscgRewEQAAAMABAAAAwAIPEiWEYABAAdo6EOPEyEw/fj4AAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAAtgAAALYAAAABhzdHRzAAAAAAAAAAEAAAACAABAAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAACAAAAAQAAABxzdHN6AAAAAAAAAAAAAAACAAACygAAAA4AAAAUc3RjbwAAAAAAAAABAAADZAAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjAuMTYuMTAwAAAACGZyZWUAAALgbWRhdAAAArEGBf//rdxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0xIHJlZj0xNiBkZWJsb2NrPTE6LTM6LTMgYW5hbHlzZT0weDM6MHgxMzMgbWU9dW1oIHN1Ym1lPTEwIHBzeT0xIHBzeV9yZD0yLjAwOjAuNzAgbWl4ZWRfcmVmPTEgbWVfcmFuZ2U9MjQgY2hyb21hX21lPTEgdHJlbGxpcz0yIDh4OGRjdD0xIGNxbT0wIGRlYWR6b25lPTIxLDExIGZhc3RfcHNraXA9MSBjaHJvbWFfcXBfb2Zmc2V0PS00IHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTggYl9weXJhbWlkPTIgYl9hZGFwdD0yIGJfYmlhcz0wIGRpcmVjdD0zIHdlaWdodGI9MSBvcGVuX2dvcD0wIHdlaWdodHA9MiBrZXlpbnQ9MjUwIGtleWludF9taW49MSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTYwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMjAAgAAAABFliIEAAvnP/vfUt8yy7gcjgQAAAApBmggtiC+c//7w';
+function brewing() { return !!(st && view === 'brew' && document.visibilityState === 'visible'); }
 function keepAwake() {
-  try { if (navigator.wakeLock && document.visibilityState === 'visible' && !wakeLock) navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; w.addEventListener('release', function () { wakeLock = null; }); }).catch(function () { }); } catch (e) { }
+  if (!brewing()) return;
+  try {
+    if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request('screen').then(function (w) {
+      wakeLock = w; w.addEventListener('release', function () { wakeLock = null; setTimeout(keepAwake, 500); });
+    }).catch(function () { });
+  } catch (e) { }
+  try {
+    if (!wakeVideo) {
+      wakeVideo = document.createElement('video');
+      wakeVideo.setAttribute('playsinline', ''); wakeVideo.setAttribute('muted', ''); wakeVideo.muted = true; wakeVideo.loop = true;
+      wakeVideo.setAttribute('aria-hidden', 'true'); wakeVideo.src = STILL_MP4;
+      wakeVideo.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1';
+      document.body.appendChild(wakeVideo);
+    }
+    if (wakeVideo.paused) { var pv = wakeVideo.play(); if (pv && pv.catch) pv.catch(function () { }); }
+  } catch (e) { }
 }
-document.addEventListener('visibilitychange', function () { if (st && view === 'brew') keepAwake(); });
-document.addEventListener('pointerdown', audioInit, { once: false, passive: true });
+function releaseAwake() {
+  try { if (wakeLock) { var w = wakeLock; wakeLock = null; w.release(); } } catch (e) { }
+  try { if (wakeVideo && !wakeVideo.paused) wakeVideo.pause(); } catch (e) { }
+}
+document.addEventListener('visibilitychange', function () {
+  if (brewing()) { keepAwake(); try { if (actx && actx.state !== 'running') actx.resume(); } catch (e) { } }
+});
+setInterval(function () { if (brewing()) keepAwake(); }, 15000);
+document.addEventListener('pointerdown', stopAlarm, { passive: true });
+document.addEventListener('touchend', function () { audioInit(); keepAwake(); }, { passive: true });
+document.addEventListener('click', function () { audioInit(); keepAwake(); }, true);
+document.addEventListener('keydown', audioInit, true);
 
 /* ---------- Dialoge ---------- */
 function dialog(title, html, buttons) {
@@ -11383,7 +11467,7 @@ function renderTop() {
 /* ---------- Rendering: Import ---------- */
 var qrFound = null;
 function renderImport(err, keepQr) {
-  view = 'import';
+  view = 'import'; releaseAwake();
   if (!keepQr) qrFound = null;
   renderTop();
   $('#view').innerHTML = '<div class="ov" style="grid-template-columns:minmax(0,760px);justify-content:center">' +
@@ -11579,7 +11663,7 @@ function boilChart() {
     '<text x="' + ((L + W - Rr) / 2) + '" y="' + (y + 42) + '" text-anchor="middle">Restkochzeit in Minuten · Kreis = Hopfen, Quadrat = weitere Zutat</text></g>' + out + '</svg>';
 }
 function renderOverview() {
-  st.mode = 'overview'; view = 'overview'; renderTop();
+  st.mode = 'overview'; view = 'overview'; renderTop(); releaseAwake();
   var r = RS, kg = maltTotalKg(r);
   var inProgress = st.started;
   var html = '<div class="ov">';
@@ -11626,7 +11710,7 @@ function enterStep() {
   save();
 }
 function renderBrew() {
-  st.mode = 'brew'; view = 'brew'; renderTop();
+  st.mode = 'brew'; view = 'brew'; renderTop(); keepAwake();
   var s = steps[st.idx], nx = steps[st.idx + 1];
   var tmode = s.temp.mode, tv = s.temp.value;
   var modeTxt = { heat: 'Heizen', hold: 'Halten', boil: 'Kochen', cool: 'Kühlen', off: 'Aus' }[tmode];
@@ -12200,7 +12284,7 @@ function showRecipe() {
 
 /* ---------- Abschluss ---------- */
 function renderFinished() {
-  st.mode = 'finished'; view = 'finished'; renderTop();
+  st.mode = 'finished'; view = 'finished'; renderTop(); releaseAwake();
   var r = RS;
   $('#view').innerHTML = '<div class="ov fin">' +
     '<section class="card"><h2 class="rtitle">Sud abgeschlossen</h2><p class="do">Alle Schritte von ' + esc(R.name) + ' sind bestätigt. Prost!</p>' +
@@ -12279,7 +12363,7 @@ document.addEventListener('click', function (e) {
     case 'flow': showFlow(); break;
     case 'recipe': showRecipe(); break;
     case 'closeSheet': closeSheet(); break;
-    case 'mute': st.muted = !st.muted; save(); renderTop(); break;
+    case 'mute': st.muted = !st.muted; save(); renderTop(); if (!st.muted) beepOnce(); break;   // beim Einschalten kurz anspielen: Test und Freigabe auf iOS
     case 'jump':
       var i = +a.getAttribute('data-i');
       if (i === st.idx) { closeSheet(); break; }
