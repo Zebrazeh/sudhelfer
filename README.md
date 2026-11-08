@@ -26,7 +26,7 @@ Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Brow
 
 **Nach dem Abfüllen:** Alkoholgehalt nach der Flaschengärung berechnen und Flaschenetikett drucken:
 
-<img src="docs/screenshots/5-abschluss-etikett-laptop.png" alt="Abschluss mit Alkoholberechnung und Etikett" width="800">
+<img src="docs/screenshots/5-nach-dem-abfuellen-laptop.png" alt="Abschluss mit Alkoholberechnung und Etikett" width="800">
 
 ## Funktionen
 
