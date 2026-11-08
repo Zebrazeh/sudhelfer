@@ -6,6 +6,28 @@ Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Brow
 
 > **Hinweis:** Sudhelfer ist ein privates Hobby-Projekt. Es steht in keiner Verbindung zu maischemalzundmehr.de und ist kein offizielles Angebot der Seite. Die Rezepte stammen von den jeweiligen Autorinnen und Autoren.
 
+## So sieht es aus
+
+**Übersicht** nach dem Laden eines Rezepts (Laptop):
+
+<img src="docs/screenshots/1-uebersicht-laptop.png" alt="Übersicht mit Kennzahlen und Brauablauf" width="800">
+
+**Brau-Modus** (Handy): links eine Rast mit großer Zieltemperatur, Rühranzeige und Timer, rechts der Stammwürze-Rechner mit Mischkreuz.
+
+<p>
+<img src="docs/screenshots/2-rast-handy.png" alt="Rast im Brau-Modus auf dem Handy" width="300">
+&nbsp;&nbsp;
+<img src="docs/screenshots/4-stammwuerze-rechner-handy.png" alt="Stammwürze-Rechner auf dem Handy" width="300">
+</p>
+
+**Hopfengabe beim Kochen** (Tablet quer):
+
+<img src="docs/screenshots/3-kochen-tablet.png" alt="Hopfengabe beim Kochen auf dem Tablet" width="800">
+
+**Abschluss** mit Alkohol nach der Flaschengärung und Flaschenetikett:
+
+<img src="docs/screenshots/5-abschluss-etikett-laptop.png" alt="Abschluss mit Alkoholberechnung und Etikett" width="800">
+
 ## Funktionen
 
 - **Rezepte laden**
