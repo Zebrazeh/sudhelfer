@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<!--
+  Sudhelfer Einkochtopf
+  © 2026 Daniel Menzel · MIT-Lizenz (vollständiger Text unten in LICENSE_TEXT bzw. in der App unter „Lizenz anzeigen“)
+  Erstellt mit Unterstützung von Claude (Anthropic).
+  Privates Hobby-Projekt ohne Verbindung zu maischemalzundmehr.de.
+  Enthält jsQR 1.4.0 (https://github.com/cozmo/jsQR), Apache License 2.0, Lizenztext in LICENSE_TEXT.
+  Die Seite ruft von sich aus keine externen Adressen auf. Einzige Ausnahme ist der Link „JSON-Export öffnen“ zu maischemalzundmehr.de, wenn man ihn antippt.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sudhelfer Einkochtopf</title>
+<style>
+/* Layout-Idee: Sudhaus-Leitstand. Links die großen Anzeigen (Temperatur, Rühren, Zeit), rechts die Arbeitsanweisung, unten Bestätigen. */
+:root {
+  --bg: #e6eae8;
+  --panel: #f8faf9;
+  --ink: #18201d;
+  --muted: #56625d;
+  --line: #c6d0cc;
+  --accent: #9a4a1c;          /* Kupfer der Sudpfanne */
+  --accent-ink: #ffffff;
+  --heat: #b33a14; --hold: #85580a; --boil: #8a1d1d; --cool: #1d5a93; --stir: #2c6834; --hard: #1d4824;
+  --ok: #2c6834; --warn: #8a5a00;
+  /* nur Systemschriften: schmal und fett für Anzeigen, Systemschrift für Text */
+  --font-display: "Avenir Next Condensed", "Helvetica Neue", "Bahnschrift", "Roboto Condensed", "sans-serif-condensed", "Arial Narrow", "DejaVu Sans Condensed", "Liberation Sans Narrow", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
+  --r: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101513; --panel: #19201d; --ink: #e9efec; --muted: #9aa8a2; --line: #2d3833;
+    --accent: #e38b55; --accent-ink: #1a0f08;
+    --heat: #b8401a; --hold: #8d6010; --boil: #9a2424; --cool: #22639f; --stir: #2f7239; --hard: #24562b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101513; --panel: #19201d; --ink: #e9efec; --muted: #9aa8a2; --line: #2d3833;
+  --accent: #e38b55; --accent-ink: #1a0f08;
+  --heat: #b8401a; --hold: #8d6010; --boil: #9a2424; --cool: #22639f; --stir: #2f7239; --hard: #24562b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.4; -webkit-text-size-adjust: 100%; }
+button, input, textarea { font: inherit; color: inherit; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; letter-spacing: .01em; line-height: 1.05; margin: 0; text-wrap: balance; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+#app { height: 100%; display: flex; flex-direction: column; }
+#view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* ---------- Kopfzeile ---------- */
+.top { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 1.35rem; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.brand svg { width: 26px; height: 26px; color: var(--accent); }
+.rname { flex: 1; min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.icobtn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 7px 10px; cursor: pointer; font-size: .9rem; font-weight: 700; }
+.icobtn:hover { border-color: var(--accent); }
+.icobtn svg { width: 18px; height: 18px; }
+.rail[hidden] { display: none; }
+.rail { display: flex; gap: 3px; padding: 6px 16px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.seg { flex: 1; min-width: 0; }
+.seg b { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.seg b i { display: block; height: 100%; background: var(--accent); }
+.seg span { display: block; font-size: .72rem; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; text-transform: uppercase; letter-spacing: .03em; }
+.seg.cur span { color: var(--ink); }
+.seg.past b { background: var(--accent); opacity: .55; }
+
+/* ---------- Knöpfe ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 10px 18px; border-radius: var(--r); border: 2px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 700; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.big { min-height: 60px; font-size: 1.2rem; padding: 12px 26px; }
+.btn[aria-disabled="true"] { opacity: .45; }
+.btn svg { width: 20px; height: 20px; }
+
+/* ---------- Übersicht ---------- */
+.ov { flex: 1; min-height: 0; overflow: auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(280px, 360px) 1fr; align-content: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card h2 { font-size: 1.5rem; text-transform: uppercase; }
+.card h3 { font-size: 1.15rem; text-transform: uppercase; color: var(--muted); }
+.rtitle { font-size: clamp(1.8rem, 3.2vw, 2.6rem); text-transform: uppercase; }
+.meta { color: var(--muted); font-size: .92rem; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.stat small { display: block; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+.stat strong { font-family: var(--font-display); font-stretch: condensed; font-size: 1.5rem; font-weight: 800; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.scale { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scale input { width: 90px; min-height: 44px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 8px; background: var(--bg); font-weight: 700; font-size: 1.1rem; }
+.demo { background: var(--accent); color: var(--accent-ink); border-radius: var(--r); padding: 12px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; grid-column: 1 / -1; }
+.demo .btn { background: var(--panel); color: var(--ink); border-color: var(--panel); }
+.warns { border-left: 4px solid var(--warn); padding: 8px 12px; background: color-mix(in srgb, var(--warn) 10%, var(--panel)); border-radius: 6px; font-size: .92rem; }
+.warns ul { margin: 4px 0 0; padding-left: 18px; }
+.flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; counter-reset: ph; }
+.ph { border: 1px solid var(--line); border-top: 5px solid var(--accent); border-radius: 8px; padding: 8px 10px; font-size: .88rem; background: var(--bg); }
+.ph h4 { margin: 0 0 4px; font-family: var(--font-display); font-stretch: condensed; font-size: 1.1rem; text-transform: uppercase; }
+.ph h4 small { display: block; font-family: var(--font-body); font-size: .72rem; color: var(--muted); font-weight: 700; text-transform: none; }
+.ph ul { margin: 0; padding-left: 16px; }
+.ph li { margin: 2px 0; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .axis text, .chart .lbl { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.chart .grid line { stroke: var(--line); stroke-width: 1; }
+.chart .pl { fill: var(--ink); font-size: 12px; font-weight: 700; font-family: var(--font-body); }
+.chart .note { fill: var(--muted); font-size: 11px; }
+.startbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.tip { position: fixed; z-index: 60; pointer-events: none; background: var(--ink); color: var(--panel); padding: 6px 9px; border-radius: 6px; font-size: .85rem; max-width: 240px; }
+
+/* ---------- Import ---------- */
+.drop { border: 2px dashed var(--line); border-radius: var(--r); padding: 18px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; background: var(--bg); }
+.drop.over { border-color: var(--accent); }
+.drop input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+textarea#paste { width: 100%; min-height: 110px; border: 2px solid var(--line); border-radius: 8px; padding: 8px; background: var(--bg); font-family: ui-monospace, Menlo, monospace; font-size: .85rem; }
+.qr { border: 2px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.qr input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.qr .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.qr input[type=text] { flex: 1; min-width: 180px; min-height: 48px; padding: 8px 10px; border: 2px solid var(--line); border-radius: 8px; background: var(--bg); }
+.found { border-left: 5px solid var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--panel)); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.found ol { margin: 0; padding-left: 20px; }
+.found a.btn { text-decoration: none; align-self: flex-start; }
+.err { color: #fff; background: var(--boil); padding: 10px 12px; border-radius: 8px; font-weight: 700; }
+
+/* ---------- Brau-Modus ---------- */
+.brew { flex: 1; min-height: 0; display: grid; gap: 12px; padding: 12px 16px; grid-template-columns: minmax(280px, 5fr) minmax(0, 6fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "status task" "foot foot"; }
+.status { grid-area: status; display: grid; gap: 12px; grid-template-rows: minmax(0, 1.5fr) minmax(0, 1fr) auto; min-height: 0; }
+.status.notimer { grid-template-rows: minmax(0, 1.6fr) minmax(0, 1fr); }
+.tile { border-radius: var(--r); padding: 12px 16px; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; position: relative; }
+.tile .lbl { font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; opacity: .9; }
+.t-temp { color: #fff; background: var(--muted); padding-right: 54px; }
+.t-temp.m-heat { background: var(--heat); } .t-temp.m-hold { background: var(--hold); } .t-temp.m-boil { background: var(--boil); } .t-temp.m-cool { background: var(--cool); }
+.t-temp.m-off { background: var(--panel); color: var(--ink); border: 2px solid var(--line); }
+.tval { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; line-height: .9; font-size: clamp(4rem, 10.5vw, 10rem); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.tval sup { font-size: .38em; vertical-align: top; position: relative; top: .25em; margin-left: .04em; }
+.tval .le { font-size: .5em; vertical-align: top; position: relative; top: .3em; margin-right: .06em; }
+.tval.rng { font-size: clamp(2.6rem, 6.5vw, 6rem); }
+.tval.none { font-size: clamp(2rem, 4.5vw, 3.6rem); line-height: 1; }
+.mode { align-self: flex-start; margin-top: 6px; font-weight: 800; font-size: .95rem; letter-spacing: .08em; text-transform: uppercase; border: 2px solid currentColor; border-radius: 99px; padding: 2px 10px; }
+.thermo { position: absolute; right: 16px; top: 14px; bottom: 14px; width: 14px; border-radius: 7px; border: 2px solid currentColor; opacity: .85; overflow: hidden; }
+.thermo i { position: absolute; left: 0; right: 0; bottom: 0; background: currentColor; }
+.t-stir { background: var(--panel); border: 2px solid var(--line); flex-direction: row; align-items: center; gap: 16px; }
+.t-stir.s-on { background: var(--stir); color: #fff; border-color: var(--stir); }
+.t-stir.s-hard { background: var(--hard); color: #fff; border-color: var(--hard); }
+.t-stir svg { width: clamp(48px, 7vw, 92px); height: clamp(48px, 7vw, 92px); flex: none; }
+.t-stir .sv { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: clamp(1.9rem, 4.6vw, 4rem); line-height: .95; text-transform: uppercase; }
+.t-stir .ss { font-size: .95rem; font-weight: 700; opacity: .92; margin-top: 4px; }
+.t-stir.s-off .sv { color: var(--muted); }
+.spin { transform-origin: 50% 50%; animation: spin 2.4s linear infinite; }
+.s-hard .spin { animation-duration: .8s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.t-timer { background: var(--panel); border: 2px solid var(--line); gap: 2px; }
+.t-timer .tt { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: clamp(2.6rem, 6vw, 5rem); line-height: 1; font-variant-numeric: tabular-nums; }
+.t-timer .tsub { color: var(--muted); font-weight: 700; font-size: .92rem; }
+.t-timer .tb { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.t-timer .tb button { min-height: 40px; padding: 6px 12px; border-radius: 8px; border: 2px solid var(--line); background: var(--bg); font-weight: 700; cursor: pointer; }
+.t-timer.ring { border-color: var(--accent); animation: ring 1s steps(2, start) infinite; }
+.t-timer.ring .tt { color: var(--accent); }
+@keyframes ring { 50% { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); } }
+
+.task > * { flex-shrink: 0; }
+.brew > * { min-width: 0; }
+.items .iv { overflow-wrap: anywhere; }
+.task { grid-area: task; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.where { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-weight: 700; font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; }
+.task h1 { font-size: clamp(1.7rem, 3vw, 2.6rem); text-transform: uppercase; }
+.task h1 small { display: block; font-family: var(--font-body); font-size: .9rem; color: var(--muted); text-transform: none; letter-spacing: 0; margin-top: 4px; font-weight: 700; }
+.do { font-size: clamp(1.08rem, 1.6vw, 1.3rem); margin: 0; max-width: 62ch; }
+.items { display: grid; grid-template-columns: auto 1fr; gap: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.items div { padding: 6px 10px; border-top: 1px solid var(--line); }
+.items div:nth-child(-n+2) { border-top: 0; }
+.items .il { color: var(--muted); font-size: .85rem; font-weight: 700; white-space: nowrap; background: var(--bg); }
+.items .iv { font-weight: 700; font-variant-numeric: tabular-nums; }
+.checks { display: flex; flex-direction: column; gap: 6px; }
+.chk { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 2px solid var(--line); border-radius: 8px; cursor: pointer; font-weight: 700; }
+.chk input { width: 26px; height: 26px; flex: none; accent-color: var(--ok); margin: 0; }
+.chk:has(input:checked) { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, var(--panel)); }
+.info { color: var(--muted); font-size: .93rem; margin: 0; padding-left: 12px; border-left: 3px solid var(--line); }
+.next { margin-top: auto; color: var(--muted); font-size: .9rem; border-top: 1px dashed var(--line); padding-top: 8px; }
+.next b { color: var(--ink); }
+.jodbtn { align-self: flex-start; }
+.calc { border: 2px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.calc .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; }
+.calc label { display: flex; flex-direction: column; gap: 3px; font-size: .85rem; font-weight: 700; color: var(--muted); }
+.calc input, .calc select { min-height: 46px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 1.1rem; font-weight: 700; color: var(--ink); width: 100%; }
+.calc .seg2 { display: flex; gap: 6px; }
+.calc .seg2 button { flex: 1; min-height: 42px; border: 2px solid var(--line); border-radius: 8px; background: var(--bg); font-weight: 700; cursor: pointer; }
+.calc .seg2 button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.res { border-radius: 8px; padding: 10px 12px; background: var(--bg); display: flex; flex-direction: column; gap: 4px; }
+.res.ok { border-left: 5px solid var(--ok); } .res.high { border-left: 5px solid var(--cool); } .res.low { border-left: 5px solid var(--warn); }
+.res .big { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 1.7rem; line-height: 1.1; }
+.res ul { margin: 2px 0 0; padding-left: 18px; }
+.fin { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); max-width: 1180px; margin: 0 auto; width: 100%; }
+.labelwrap { display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: 16px; align-items: start; }
+.labelwrap canvas { width: 100%; height: auto; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,.25); background: #f4ecd8; }
+.labelwrap .fields { display: flex; flex-direction: column; gap: 8px; }
+.labelwrap label { display: flex; flex-direction: column; gap: 3px; font-size: .85rem; font-weight: 700; color: var(--muted); }
+.labelwrap input { min-height: 44px; padding: 6px 10px; border: 2px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 1rem; font-weight: 700; color: var(--ink); width: 100%; }
+.abvbig { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; font-size: 3.4rem; line-height: 1; }
+.imgout img { max-width: 100%; border-radius: 6px; }
+@media (max-width: 900px) { .fin { grid-template-columns: 1fr; } }
+@media (max-width: 460px) { .labelwrap { grid-template-columns: 1fr; } }
+.warnbox { border: 3px solid var(--boil); border-radius: 8px; padding: 12px 14px; background: color-mix(in srgb, var(--boil) 8%, var(--panel)); display: flex; flex-direction: column; gap: 6px; }
+.warnbox h2 { font-size: 1.35rem; text-transform: uppercase; color: var(--boil); display: flex; gap: 8px; align-items: center; }
+.warnbox h2 svg { width: 26px; height: 26px; flex: none; }
+.warnbox ul { margin: 0; padding-left: 18px; }
+.warnbox li { margin: 3px 0; }
+:root[data-theme="dark"] .warnbox h2 { color: #ff8a80; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warnbox h2 { color: #ff8a80; } }
+
+.foot { grid-area: foot; display: flex; gap: 10px; align-items: stretch; }
+.foot .back { flex: none; }
+.done { flex: 1; display: flex; align-items: center; gap: 12px; padding: 8px 16px; border: 2px solid var(--line); border-radius: var(--r); background: var(--panel); cursor: pointer; font-weight: 800; font-size: 1.15rem; min-height: 60px; }
+.done input { width: 34px; height: 34px; accent-color: var(--ok); margin: 0; flex: none; }
+.done:has(input:checked) { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
+.foot .ok { flex: none; min-width: 140px; }
+.shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+/* ---------- Overlays ---------- */
+.veil { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dlg { background: var(--panel); border-radius: var(--r); padding: 20px; max-width: 460px; width: 100%; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.dlg h2 { font-size: 1.6rem; text-transform: uppercase; }
+.dlg .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.sheet { background: var(--panel); border-radius: var(--r); width: min(760px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.sheet header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.sheet header h2 { font-size: 1.5rem; text-transform: uppercase; }
+.sheet .body { overflow: auto; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.slist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.slist h3 { font-size: 1.05rem; text-transform: uppercase; color: var(--muted); margin: 10px 0 4px; }
+.slist button { width: 100%; text-align: left; display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; }
+.slist button:hover { border-color: var(--line); }
+.slist .n { font-family: var(--font-display); font-stretch: condensed; font-weight: 800; width: 2.2em; color: var(--muted); }
+.slist .st { margin-left: auto; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.slist .is-cur { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: var(--accent); }
+.slist .is-done .t { color: var(--muted); text-decoration: line-through; }
+.pre { white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 10px; font-size: .93rem; }
+
+/* ---------- Hochformat / schmale Geräte ---------- */
+@media (max-width: 760px), (orientation: portrait) and (max-width: 900px) {
+  .ov { grid-template-columns: 1fr; padding: 12px; }
+  .brew { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "status" "task" "foot"; padding: 10px 12px; gap: 10px; }
+  .status, .status.notimer { grid-template-columns: 1.25fr 1fr; grid-template-rows: auto auto; }
+  .status .t-timer { grid-column: 1 / -1; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px 12px; }
+  .t-timer .tb { margin-top: 0; }
+  .tval { font-size: clamp(3rem, 16vw, 6rem); }
+  .tile .lbl { font-size: .74rem; }
+  .mode { font-size: .8rem; margin-top: 4px; }
+  .t-timer .tb button { min-height: 34px; padding: 4px 10px; font-size: .9rem; }
+  .t-timer .tb { width: 100%; }
+  .tval.none { font-size: clamp(1.6rem, 7vw, 2.4rem); }
+  .t-temp { padding: 10px 40px 10px 12px; }
+  .thermo { right: 10px; width: 12px; }
+  .t-stir { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 12px; }
+  .t-stir svg { width: 36px; height: 36px; }
+  .t-stir .sv { font-size: clamp(1.4rem, 7vw, 2.3rem); }
+  .t-stir .ss { font-size: .82rem; }
+  .t-timer .tt { font-size: clamp(2rem, 10vw, 3rem); }
+  .task { padding: 12px; }
+  .done { font-size: 1rem; padding: 6px 10px; }
+  .foot .ok { min-width: 96px; }
+  .foot .back span { display: none; }
+  .rail span { display: none; }
+  .rail .cur span { display: block; position: absolute; }
+  .rail { padding-bottom: 22px; position: relative; }
+  .rail .cur { position: relative; }
+  .rail .cur span { left: 0; white-space: nowrap; overflow: visible; }
+  .icobtn span { display: none; }
+  .brand span { display: none; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .top { padding: 4px 12px; } .rail { padding: 4px 12px 4px; } .rail span { display: none; }
+  .brew { padding: 8px 12px; gap: 8px; }
+  .tval { font-size: clamp(2.8rem, 15vh, 6rem); }
+  .t-stir svg { width: 40px; height: 40px; } .t-stir .sv { font-size: 1.6rem; }
+  .t-timer .tt { font-size: 2.2rem; }
+  .done, .btn.big { min-height: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin, .t-timer.ring, .shake { animation: none; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top" id="top"></header>
+  <nav class="rail" id="rail" aria-label="Brauphasen" hidden></nav>
+  <main id="view"></main>
+</div>
+<div id="tip" class="tip" hidden></div>
+<noscript><p style="padding:16px">Der Sudhelfer braucht JavaScript.</p></noscript>
+<script>
+/*__JSQR__*/
+</script>
+<script>
+/*__CORE__*/
+</script>
+<script>
+(function () {
+'use strict';
+var STORE = 'sudhelfer-einkochtopf-v1';
+var LICENSE_TEXT = "MIT License\n\nCopyright (c) 2026 Daniel Menzel\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n---\nSudhelfer Einkochtopf – erstellt von Daniel Menzel mit Unterstützung von Claude (Anthropic).\nPrivates Hobby-Projekt ohne Verbindung zu maischemalzundmehr.de.\n\nSchriften: Die App nutzt ausschließlich die auf dem Gerät installierten Systemschriften und bettet keine Schriften ein.\n\nExterne Aufrufe: Die App lädt nichts aus dem Internet nach. Einzige Ausnahme ist der Link „JSON-Export öffnen“ zu www.maischemalzundmehr.de, den du selbst antippst.\n\n============================================================\nEnthaltene Fremdsoftware\n============================================================\n\njsQR 1.4.0 – QR-Code-Erkennung\nQuelle: https://github.com/cozmo/jsQR (npm-Paket „jsqr“)\nBeteiligte: Cosmo Wolfe, Jefff Nelson und weitere Mitwirkende\nLizenz: Apache License 2.0 (vollständiger Text folgt). Die Datei ist unverändert eingebettet.\n\n                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n   1. Definitions.\n\n      \"License\" shall mean the terms and conditions for use, reproduction,\n      and distribution as defined by Sections 1 through 9 of this document.\n\n      \"Licensor\" shall mean the copyright owner or entity authorized by\n      the copyright owner that is granting the License.\n\n      \"Legal Entity\" shall mean the union of the acting entity and all\n      other entities that control, are controlled by, or are under common\n      control with that entity. For the purposes of this definition,\n      \"control\" means (i) the power, direct or indirect, to cause the\n      direction or management of such entity, whether by contract or\n      otherwise, or (ii) ownership of fifty percent (50%) or more of the\n      outstanding shares, or (iii) beneficial ownership of such entity.\n\n      \"You\" (or \"Your\") shall mean an individual or Legal Entity\n      exercising permissions granted by this License.\n\n      \"Source\" form shall mean the preferred form for making modifications,\n      including but not limited to software source code, documentation\n      source, and configuration files.\n\n      \"Object\" form shall mean any form resulting from mechanical\n      transformation or translation of a Source form, including but\n      not limited to compiled object code, generated documentation,\n      and conversions to other media types.\n\n      \"Work\" shall mean the work of authorship, whether in Source or\n      Object form, made available under the License, as indicated by a\n      copyright notice that is included in or attached to the work\n      (an example is provided in the Appendix below).\n\n      \"Derivative Works\" shall mean any work, whether in Source or Object\n      form, that is based on (or derived from) the Work and for which the\n      editorial revisions, annotations, elaborations, or other modifications\n      represent, as a whole, an original work of authorship. For the purposes\n      of this License, Derivative Works shall not include works that remain\n      separable from, or merely link (or bind by name) to the interfaces of,\n      the Work and Derivative Works thereof.\n\n      \"Contribution\" shall mean any work of authorship, including\n      the original version of the Work and any modifications or additions\n      to that Work or Derivative Works thereof, that is intentionally\n      submitted to Licensor for inclusion in the Work by the copyright owner\n      or by an individual or Legal Entity authorized to submit on behalf of\n      the copyright owner. For the purposes of this definition, \"submitted\"\n      means any form of electronic, verbal, or written communication sent\n      to the Licensor or its representatives, including but not limited to\n      communication on electronic mailing lists, source code control systems,\n      and issue tracking systems that are managed by, or on behalf of, the\n      Licensor for the purpose of discussing and improving the Work, but\n      excluding communication that is conspicuously marked or otherwise\n      designated in writing by the copyright owner as \"Not a Contribution.\"\n\n      \"Contributor\" shall mean Licensor and any individual or Legal Entity\n      on behalf of whom a Contribution has been received by Licensor and\n      subsequently incorporated within the Work.\n\n   2. Grant of Copyright License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      copyright license to reproduce, prepare Derivative Works of,\n      publicly display, publicly perform, sublicense, and distribute the\n      Work and such Derivative Works in Source or Object form.\n\n   3. Grant of Patent License. Subject to the terms and conditions of\n      this License, each Contributor hereby grants to You a perpetual,\n      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n      (except as stated in this section) patent license to make, have made,\n      use, offer to sell, sell, import, and otherwise transfer the Work,\n      where such license applies only to those patent claims licensable\n      by such Contributor that are necessarily infringed by their\n      Contribution(s) alone or by combination of their Contribution(s)\n      with the Work to which such Contribution(s) was submitted. If You\n      institute patent litigation against any entity (including a\n      cross-claim or counterclaim in a lawsuit) alleging that the Work\n      or a Contribution incorporated within the Work constitutes direct\n      or contributory patent infringement, then any patent licenses\n      granted to You under this License for that Work shall terminate\n      as of the date such litigation is filed.\n\n   4. Redistribution. You may reproduce and distribute copies of the\n      Work or Derivative Works thereof in any medium, with or without\n      modifications, and in Source or Object form, provided that You\n      meet the following conditions:\n\n      (a) You must give any other recipients of the Work or\n          Derivative Works a copy of this License; and\n\n      (b) You must cause any modified files to carry prominent notices\n          stating that You changed the files; and\n\n      (c) You must retain, in the Source form of any Derivative Works\n          that You distribute, all copyright, patent, trademark, and\n          attribution notices from the Source form of the Work,\n          excluding those notices that do not pertain to any part of\n          the Derivative Works; and\n\n      (d) If the Work includes a \"NOTICE\" text file as part of its\n          distribution, then any Derivative Works that You distribute must\n          include a readable copy of the attribution notices contained\n          within such NOTICE file, excluding those notices that do not\n          pertain to any part of the Derivative Works, in at least one\n          of the following places: within a NOTICE text file distributed\n          as part of the Derivative Works; within the Source form or\n          documentation, if provided along with the Derivative Works; or,\n          within a display generated by the Derivative Works, if and\n          wherever such third-party notices normally appear. The contents\n          of the NOTICE file are for informational purposes only and\n          do not modify the License. You may add Your own attribution\n          notices within Derivative Works that You distribute, alongside\n          or as an addendum to the NOTICE text from the Work, provided\n          that such additional attribution notices cannot be construed\n          as modifying the License.\n\n      You may add Your own copyright statement to Your modifications and\n      may provide additional or different license terms and conditions\n      for use, reproduction, or distribution of Your modifications, or\n      for any such Derivative Works as a whole, provided Your use,\n      reproduction, and distribution of the Work otherwise complies with\n      the conditions stated in this License.\n\n   5. Submission of Contributions. Unless You explicitly state otherwise,\n      any Contribution intentionally submitted for inclusion in the Work\n      by You to the Licensor shall be under the terms and conditions of\n      this License, without any additional terms or conditions.\n      Notwithstanding the above, nothing herein shall supersede or modify\n      the terms of any separate license agreement you may have executed\n      with Licensor regarding such Contributions.\n\n   6. Trademarks. This License does not grant permission to use the trade\n      names, trademarks, service marks, or product names of the Licensor,\n      except as required for reasonable and customary use in describing the\n      origin of the Work and reproducing the content of the NOTICE file.\n\n   7. Disclaimer of Warranty. Unless required by applicable law or\n      agreed to in writing, Licensor provides the Work (and each\n      Contributor provides its Contributions) on an \"AS IS\" BASIS,\n      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n      implied, including, without limitation, any warranties or conditions\n      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n      PARTICULAR PURPOSE. You are solely responsible for determining the\n      appropriateness of using or redistributing the Work and assume any\n      risks associated with Your exercise of permissions under this License.\n\n   8. Limitation of Liability. In no event and under no legal theory,\n      whether in tort (including negligence), contract, or otherwise,\n      unless required by applicable law (such as deliberate and grossly\n      negligent acts) or agreed to in writing, shall any Contributor be\n      liable to You for damages, including any direct, indirect, special,\n      incidental, or consequential damages of any character arising as a\n      result of this License or out of the use or inability to use the\n      Work (including but not limited to damages for loss of goodwill,\n      work stoppage, computer failure or malfunction, or any and all\n      other commercial damages or losses), even if such Contributor\n      has been advised of the possibility of such damages.\n\n   9. Accepting Warranty or Additional Liability. While redistributing\n      the Work or Derivative Works thereof, You may choose to offer,\n      and charge a fee for, acceptance of support, warranty, indemnity,\n      or other liability obligations and/or rights consistent with this\n      License. However, in accepting such obligations, You may act only\n      on Your own behalf and on Your sole responsibility, not on behalf\n      of any other Contributor, and only if You agree to indemnify,\n      defend, and hold each Contributor harmless for any liability\n      incurred by, or claims asserted against, such Contributor by reason\n      of your accepting any such warranty or additional liability.\n\n   END OF TERMS AND CONDITIONS\n\n   APPENDIX: How to apply the Apache License to your work.\n\n      To apply the Apache License to your work, attach the following\n      boilerplate notice, with the fields enclosed by brackets \"{}\"\n      replaced with your own identifying information. (Don't include\n      the brackets!)  The text should be enclosed in the appropriate\n      comment syntax for the file format. We also recommend that a\n      file or class name and description of purpose be included on the\n      same \"printed page\" as the copyright notice for easier\n      identification within third-party archives.\n\n   Copyright {yyyy} {name of copyright owner}\n\n   Licensed under the Apache License, Version 2.0 (the \"License\");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       http://www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an \"AS IS\" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\n";
+var DEMO = {
+  Rezeptquelle: 'Beispiel (selbst zusammengestellt, kein Rezept von maischemalzundmehr.de)', ExportVersion: '2.0',
+  Name: 'Beispiel: Belgisches Blond', Datum: '08.11.2026', Sorte: 'Belgian Blond Ale', Autor: 'Sudhelfer Demo',
+  Ausschlagwuerze: 20, Sudhausausbeute: 65, Stammwuerze: 15.3, Bittere: 25, Farbe: 9, Alkohol: 6.9,
+  Kurzbeschreibung: 'Goldenes, fruchtiges belgisches Blond mit trockenem Abgang. Selbst zusammengestelltes Beispiel zum Ausprobieren der App. Für deinen Brautag lade dein eigenes Rezept.',
+  Malze: [{ Name: 'Pilsner Malz', Menge: 3.65, Einheit: 'kg' }, { Name: 'Weizenmalz hell', Menge: 300, Einheit: 'g' }, { Name: 'Münchner Malz hell', Menge: 300, Einheit: 'g' }],
+  Maischform: 'infusion', Hauptguss: 15, Einmaischtemperatur: 66,
+  Rasten: [{ Temperatur: 63, Zeit: 45 }, { Temperatur: 72, Zeit: 20 }],
+  Abmaischtemperatur: 78, Nachguss: 14, Kochzeit_Wuerze: 80,
+  Hopfenkochen: [
+    { Sorte: 'Saazer', Menge: 15, Alpha: 3.5, Zeit: 0, Typ: 'Vorderwuerze' },
+    { Sorte: 'Magnum', Menge: 11, Alpha: 12, Zeit: 80, Typ: 'Standard' },
+    { Sorte: 'Saazer', Menge: 20, Alpha: 3.5, Zeit: 15, Typ: 'Standard' },
+    { Sorte: 'Saazer', Menge: 25, Alpha: 3.5, Zeit: 0, Typ: 'Whirlpool' }],
+  Stopfhopfen: [],
+  Hefe: 'SafAle BE-256, 1 Päckchen (11,5 g)', Gaertemperatur: '18-22', Endvergaerungsgrad: 82, Karbonisierung: 5.5,
+  WeitereZutatGaerung: [],
+  Gewuerze_etc: [{ Name: 'Kandiszucker hell', Menge: 350, Einheit: 'g', Kochzeit: 10 }],
+  Anmerkung_Autor: 'Beispielrezept zum Ausprobieren der App. Werte nachgerechnet: 15,3 °P (1.062), ca. 25 IBU, ca. 9 EBC, 6,9 % vol vor und ca. 7,4 % vol nach der Flaschengärung mit 5,5 g/l CO2. Alpha-Werte deines Hopfens prüfen und Mengen bei Abweichung anpassen. Kandiszucker kann durch die gleiche Menge Haushaltszucker ersetzt werden. Nach Gärende 1 Woche bei Gärtemperatur reifen lassen, erst bei gleichbleibendem Restextrakt (ca. 2,7 °P) abfüllen.'
+};
+
+/* ---------- Zustand ---------- */
+var st = null, R = null, RS = null, steps = [], view = 'overview';
+function fresh(raw, fileName, isDemo) {
+  return { raw: raw, fileName: fileName || '', demo: !!isDemo, scaleL: null, mode: 'overview', idx: 0, started: false,
+    done: {}, checks: {}, confirm: {}, timers: {}, alarmed: {}, entered: {}, boil: null, muted: false };
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) { /* ohne Speicher weiter */ } }
+function load() { try { var s = localStorage.getItem(STORE); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function rebuild() {
+  R = parseRecipe(st.raw);
+  var man = st.manual || {};
+  if (R.batchL === null && man.batchL) { R.batchL = man.batchL; R.batchManual = true; R.warnings = R.warnings.filter(function (w) { return w.indexOf('Ausschlagwürze (im Export') < 0; }); }
+  if (R.sha === null && man.sha) { R.sha = man.sha; R.shaManual = true; }
+  var f = (st.scaleL && R.batchL) ? st.scaleL / R.batchL : 1;
+  RS = scaleRecipe(R, f);
+  steps = buildSteps(RS);
+  if (st.idx >= steps.length) st.idx = steps.length - 1;
+}
+
+/* ---------- Helfer ---------- */
+function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function $(s) { return document.querySelector(s); }
+function now() { return Date.now(); }
+function clock(ms) {
+  var neg = ms < 0; ms = Math.abs(ms);
+  var s = Math.floor(ms / 1000 + (neg ? 0 : 0.999)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  var out = (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(x).padStart(2, '0');
+  return (neg ? '+' : '') + out;
+}
+function tElapsed(t) { return t.acc + (t.start ? now() - t.start : 0); }
+function tRemain(t) { return t.dur - tElapsed(t); }
+var I = {
+  logo: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M6 10h20v14a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/><path d="M4 10h24M11 6c0-2 2-2 2-4M17 6c0-2 2-2 2-4M23 6c0-2 2-2 2-4"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor"/></svg>',
+  book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg>',
+  mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 9.5-4.9M18 11v5l2 2H4"/><path d="M10 21h4M3 3l18 18"/></svg>',
+  qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 14v7h-4M14 18v3"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  next: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+  stir: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><g class="spin"><path d="M32 8a24 24 0 1 1-21 12.5"/><path d="M6 10l5 10.5 11-3.5"/></g><circle cx="32" cy="32" r="5" fill="currentColor"/></svg>',
+  nostir: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><circle cx="32" cy="32" r="24" opacity=".45"/><path d="M14 50L50 14"/></svg>'
+};
+var PH = {}; PHASES.forEach(function (p) { PH[p.key] = p.name; });
+
+/* ---------- Ton, Vibration, Wachhalten ---------- */
+var actx = null;
+function audioInit() { if (actx) return; try { var A = window.AudioContext || window.webkitAudioContext; if (A) actx = new A(); } catch (e) { actx = null; } }
+function beep() {
+  if (st && st.muted) return;
+  try {
+    if (!actx) return; if (actx.state === 'suspended') actx.resume();
+    for (var i = 0; i < 4; i++) {
+      var o = actx.createOscillator(), g = actx.createGain(), t0 = actx.currentTime + i * 0.32;
+      o.type = 'square'; o.frequency.value = i % 2 ? 660 : 880; g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.25);
+      o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + 0.27);
+    }
+  } catch (e) { }
+  try { if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]); } catch (e) { }
+}
+var wakeLock = null;
+function keepAwake() {
+  try { if (navigator.wakeLock && document.visibilityState === 'visible' && !wakeLock) navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; w.addEventListener('release', function () { wakeLock = null; }); }).catch(function () { }); } catch (e) { }
+}
+document.addEventListener('visibilitychange', function () { if (st && view === 'brew') keepAwake(); });
+document.addEventListener('pointerdown', audioInit, { once: false, passive: true });
+
+/* ---------- Dialoge ---------- */
+function dialog(title, html, buttons) {
+  closeDialog();
+  var v = document.createElement('div'); v.className = 'veil'; v.id = 'dlg';
+  v.innerHTML = '<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"><h2 id="dlgT">' + esc(title) + '</h2><div>' + html + '</div><div class="row">' +
+    buttons.map(function (b, i) { return '<button class="btn' + (b.primary ? ' primary' : '') + '" data-dlg="' + i + '">' + esc(b.label) + '</button>'; }).join('') + '</div></div>';
+  document.body.appendChild(v);
+  v.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-dlg]'); if (!b) { if (e.target === v) closeDialog(); return; }
+    var fn = buttons[+b.getAttribute('data-dlg')].fn; closeDialog(); if (fn) fn();
+  });
+  var p = v.querySelector('.btn.primary') || v.querySelector('.btn'); if (p) p.focus();
+}
+function closeDialog() { var d = $('#dlg'); if (d) d.remove(); }
+function sheet(title, html) {
+  closeSheet();
+  var v = document.createElement('div'); v.className = 'veil'; v.id = 'sheet';
+  v.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shT"><header><h2 id="shT">' + esc(title) + '</h2><button class="btn" data-act="closeSheet">Schließen</button></header><div class="body">' + html + '</div></div>';
+  document.body.appendChild(v);
+  v.addEventListener('click', function (e) { if (e.target === v) closeSheet(); });
+  var cur = v.querySelector('.is-cur'); if (cur) cur.scrollIntoView({ block: 'center' });
+}
+function closeSheet() { var d = $('#sheet'); if (d) d.remove(); }
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDialog(); closeSheet(); } });
+
+/* ---------- Rendering: Kopf ---------- */
+function renderTop() {
+  var t = $('#top');
+  var name = R ? R.name + (RS && RS.factor !== 1 ? ' · skaliert auf ' + fmtNum(RS.batchL, 1) + ' L' : '') : '';
+  var btns = '';
+  if (view === 'brew' || view === 'finished') {
+    btns = '<button class="icobtn" data-act="flow" title="Alle Schritte">' + I.list + '<span>Ablauf</span></button>' +
+      '<button class="icobtn" data-act="recipe" title="Rezept anzeigen">' + I.book + '<span>Rezept</span></button>' +
+      '<button class="icobtn" data-act="mute" title="' + (st.muted ? 'Ton ist aus' : 'Ton ist an') + '" aria-pressed="' + (!st.muted) + '">' + (st.muted ? I.mute : I.bell) + '<span>' + (st.muted ? 'Ton aus' : 'Ton an') + '</span></button>';
+  } else if (view === 'overview') {
+    btns = '<button class="icobtn" data-act="import">' + I.upload + '<span>Rezept laden</span></button>';
+  }
+  t.innerHTML = '<div class="brand">' + I.logo + '<span>Sudhelfer</span></div><div class="rname">' + esc(name) + '</div>' + btns;
+  var rail = $('#rail');
+  if (view === 'brew') {
+    var cur = steps[st.idx].phase, keys = [];
+    steps.forEach(function (s) { if (keys.indexOf(s.phase) < 0) keys.push(s.phase); });
+    var ci = keys.indexOf(cur);
+    rail.hidden = false;
+    rail.innerHTML = keys.map(function (k, i) {
+      var inPh = steps.filter(function (s) { return s.phase === k; });
+      var pos = inPh.indexOf(steps[st.idx]);
+      var w = i < ci ? 100 : i > ci ? 0 : Math.round(pos / inPh.length * 100);
+      return '<div class="seg ' + (i < ci ? 'past' : i === ci ? 'cur' : '') + '"><b><i style="width:' + w + '%"></i></b><span>' + esc(PH[k]) + '</span></div>';
+    }).join('');
+  } else { rail.hidden = true; rail.innerHTML = ''; }
+}
+
+/* ---------- Rendering: Import ---------- */
+var qrFound = null;
+function renderImport(err, keepQr) {
+  view = 'import';
+  if (!keepQr) qrFound = null;
+  renderTop();
+  $('#view').innerHTML = '<div class="ov" style="grid-template-columns:minmax(0,760px);justify-content:center">' +
+    '<section class="card"><h2 class="rtitle">Rezept laden</h2>' +
+    '<p class="do">Lade dein Rezept von maischemalzundmehr.de per QR-Code oder als JSON-Datei („Export JSON“ über dem Rezept). Rezepte aus anderen Brauprogrammen gehen als BeerXML oder BeerJSON, z. B. aus BeerSmith, Brewfather, Kleiner Brauhelfer oder Brewer’s Friend.</p>' +
+    (err ? '<div class="err" role="alert">' + esc(err) + '</div>' : '') +
+    qrSection() +
+    '<label class="drop" id="drop" for="file"><strong>Rezeptdatei wählen oder hierher ziehen</strong><span class="meta">maischemalzundmehr.de-JSON (Version 1 und 2, auch Dekoktion), BeerXML 1.0 (.xml) oder BeerJSON 1.0 (.json).</span>' +
+    '<span class="btn primary">' + I.upload + 'Datei wählen</span><input type="file" id="file" accept=".json,.xml,.beerxml,.txt,application/json,text/xml,application/xml,text/plain"></label>' +
+    '<label for="paste" class="meta">Oder den Text der Datei einfügen (JSON oder BeerXML):</label><textarea id="paste" spellcheck="false" placeholder="{ &quot;Rezeptquelle&quot;: &quot;www.maischemalzundmehr.de&quot;, … }"></textarea>' +
+    '<div class="startbar"><button class="btn" data-act="pasteLoad">Text einlesen</button><button class="btn" data-act="demo">Beispielrezept laden</button>' +
+    (R ? '<button class="btn" data-act="cancelImport">Zurück zum aktuellen Rezept</button>' : '') + '</div>' + '<p class="meta">Sudhelfer ist ein privates Hobby-Projekt. Es steht in keiner Verbindung zu maischemalzundmehr.de und ist kein offizielles Angebot der Seite. Die Rezepte stammen von den jeweiligen Autorinnen und Autoren.<br>© 2026 Daniel Menzel · MIT-Lizenz · erstellt mit Unterstützung von Claude (Anthropic) · <a href="#lizenz" data-act="license">Lizenz anzeigen</a></p>' + '</section></div>';
+  var drop = $('#drop');
+  ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
+  drop.addEventListener('drop', function (e) { var f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
+  $('#file').addEventListener('change', function (e) { var f = e.target.files[0]; if (f) readFile(f); });
+  $('#qrfile').addEventListener('change', function (e) { var f = e.target.files[0]; if (f) scanQrImage(f); e.target.value = ''; });
+  $('#qrlink').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); useQrText($('#qrlink').value); } });
+}
+
+/* ---------- QR-Code von maischemalzundmehr.de ---------- */
+var MMUM = 'https://www.maischemalzundmehr.de/';
+function exportUrl(id) { return MMUM + 'export_json.php?id=' + id + '&factoraw=0&factorsha=0&factorhav=0'; }
+function qrSection() {
+  var h = '<div class="qr"><strong>QR-Code von maischemalzundmehr.de</strong>' +
+    '<span class="meta">Fotografiere den QR-Code der Rezeptseite oder wähle ein Bild davon. Ein Rezept-Link oder die Rezeptnummer geht auch.</span>' +
+    '<div class="row"><label class="btn primary" for="qrfile">' + I.qr + 'QR-Code scannen</label><input type="file" id="qrfile" accept="image/*">' +
+    '<input type="text" id="qrlink" inputmode="url" autocomplete="off" placeholder="Rezept-Link oder Nummer, z. B. 89"><button class="btn" data-act="qrText">Übernehmen</button></div>';
+  if (qrFound) {
+    h += '<div class="found" role="status"><strong>Rezept Nr. ' + esc(qrFound) + ' erkannt.</strong>' +
+      '<span>Die App darf Daten anderer Webseiten nicht selbst laden. So kommt das Rezept herein:</span>' +
+      '<ol><li>Tippe auf „JSON-Export öffnen“. Der Export öffnet sich im Browser.</li><li>Speichere die Datei oder markiere und kopiere den ganzen Text.</li><li>Komm zurück und wähle unten die Datei oder füge den Text ein.</li></ol>' +
+      '<a class="btn primary" href="' + esc(exportUrl(qrFound)) + '" target="_blank" rel="noopener">JSON-Export öffnen</a>' +
+      '<span class="meta">Adresse: ' + esc(exportUrl(qrFound)) + '</span></div>';
+  }
+  return h + '</div>';
+}
+function recipeIdFrom(text) {
+  var t = String(text || '').trim();
+  if (!t) return null;
+  var m = t.match(/maischemalzundmehr\.de\/[^\s]*?[?&]id=(\d+)/i) || t.match(/[?&]id=(\d+)/) || t.match(/^#?(\d{1,7})$/);
+  return m ? m[1] : null;
+}
+function useQrText(text) {
+  var t = String(text || '').trim();
+  if (t.charAt(0) === '{') { tryLoad(t, 'QR-Code'); return; }
+  var id = recipeIdFrom(t);
+  if (!id) { qrFound = null; renderImport('Darin steckt kein Rezept von maischemalzundmehr.de' + (t ? ' (gelesen: „' + t.slice(0, 80) + '“)' : '') + '. Erwartet wird ein Link wie www.maischemalzundmehr.de/index.php?id=89&inhaltmitte=rezept oder die Rezeptnummer.', true); return; }
+  qrFound = id; renderImport(null, true);
+  directFetch(id);
+}
+function directFetch(id) {
+  /* klappt nur, wenn die Seite außerhalb von claude.ai läuft und der Server es erlaubt */
+  try {
+    if (!window.fetch || /claude|claudeusercontent/.test(location.hostname)) return;
+    fetch(exportUrl(id)).then(function (r) { return r.ok ? r.text() : null; }).then(function (t) { if (t && qrFound === id) tryLoad(t, 'Rezept ' + id); }).catch(function () { });
+  } catch (e) { }
+}
+function loadJsQR() {
+  /* jsQR ist in diese Datei eingebettet (siehe Lizenz), es wird nichts nachgeladen */
+  return window.jsQR ? Promise.resolve(window.jsQR) : Promise.reject(new Error('Die QR-Erkennung fehlt in dieser Datei.'));
+}
+function scanQrImage(file) {
+  var url = URL.createObjectURL(file), img = new Image();
+  img.onerror = function () { URL.revokeObjectURL(url); renderImport('Das Bild konnte nicht geöffnet werden. Nimm ein Foto im JPG- oder PNG-Format.', true); };
+  img.onload = function () {
+    URL.revokeObjectURL(url);
+    var tryDetector = (window.BarcodeDetector ? new window.BarcodeDetector({ formats: ['qr_code'] }).detect(img).then(function (c) { return c.length ? c[0].rawValue : null; }).catch(function () { return null; }) : Promise.resolve(null));
+    tryDetector.then(function (val) {
+      if (val) return val;
+      return loadJsQR().then(function (jsQR) {
+        var sizes = [1400, 900, 600];
+        for (var i = 0; i < sizes.length; i++) {
+          var sc = Math.min(1, sizes[i] / Math.max(img.naturalWidth, img.naturalHeight));
+          var w = Math.max(1, Math.round(img.naturalWidth * sc)), h = Math.max(1, Math.round(img.naturalHeight * sc));
+          var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          var cx = cv.getContext('2d'); cx.drawImage(img, 0, 0, w, h);
+          var res = jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+          if (res && res.data) return res.data;
+        }
+        return null;
+      });
+    }).then(function (val) {
+      if (!val) { renderImport('Im Bild wurde kein QR-Code gefunden. Fotografiere den Code gerade, formatfüllend und scharf.', true); return; }
+      useQrText(val);
+    }).catch(function (e) { renderImport(e.message, true); });
+  };
+  img.src = url;
+}
+function readFile(f) {
+  var r = new FileReader();
+  r.onload = function () { tryLoad(String(r.result), f.name); };
+  r.onerror = function () { renderImport('Die Datei konnte nicht gelesen werden.'); };
+  r.readAsText(f, 'utf-8');
+}
+function tryLoad(text, name, isDemo) {
+  try { parseRecipe(text); }
+  catch (e) {
+    var m = e instanceof SyntaxError ? 'Die Datei ist kein gültiges oder ein unvollständiges JSON (' + e.message + '). Lade den Export erneut herunter oder nimm eine BeerXML-Datei.' : e.message;
+    renderImport(m); return;
+  }
+  var go = function () { st = fresh(text, name, isDemo); rebuild(); save(); render(); };
+  if (st && st.started && !st.demo) {
+    dialog('Laufenden Sud verwerfen?', '<p>Du bist bei Schritt ' + (st.idx + 1) + ' von ' + steps.length + '. Das neue Rezept ersetzt diesen Fortschritt.</p>',
+      [{ label: 'Abbrechen' }, { label: 'Verwerfen und laden', primary: true, fn: go }]);
+  } else go();
+}
+
+/* ---------- Rendering: Übersicht ---------- */
+function sv(v, d, u) { return v === null || v === undefined ? '–' : fmtNum(v, d) + (u ? ' ' + u : ''); }
+function stat(l, v) { return '<div class="stat"><small>' + l + '</small><strong class="num">' + v + '</strong></div>'; }
+function flowCards() {
+  var r = RS, cards = [];
+  var counts = {}; steps.forEach(function (s) { counts[s.phase] = (counts[s.phase] || 0) + 1; });
+  function card(k, lines) { if (!counts[k]) return; cards.push('<div class="ph"><h4>' + esc(PH[k]) + '<small>' + counts[k] + ' Schritte</small></h4><ul>' + lines.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ul></div>'); }
+  card('prep', ['Zutaten abwiegen', 'Hauptguss ' + esc(fmtL(r.mainWater)) + ' auf ' + esc(fmtT(r.mashInTemp))]);
+  var m = ['Einmaischen bei ' + esc(fmtT(r.mashInTemp))];
+  steps.filter(function (s) { return s.phase === 'mash' && s.timer; }).forEach(function (s) { m.push(esc(s.title.replace(/^Rast \d+: /, ''))); });
+  m.push('Jodprobe'); m.push('Abmaischen ' + esc(fmtT(r.mashOutTemp)));
+  card('mash', m);
+  var l = ['Läuterruhe 15 min'];
+  r.hops.filter(function (h) { return h.type === 'fwh'; }).forEach(function (h) { l.push('Vorderwürze: ' + esc(hopLabel(h))); });
+  l.push('Nachguss ' + esc(fmtL(r.spargeWater)) + ' bei ' + esc(fmtT(r.mashOutTemp)));
+  card('lauter', l);
+  var b = [fmtNum(r.boilTime, 0) + ' min kochen'];
+  steps.filter(function (s) { return s.phase === 'boil'; }).forEach(function (s) { s.items.forEach(function (it) { b.push(esc(it.label.replace(/^(Hopfen|Zutat) · /, '')) + ': ' + esc(it.value)); }); });
+  card('boil', b);
+  var w = [];
+  r.hops.filter(function (h) { return h.type === 'whirlpool'; }).forEach(function (h) { w.push('Whirlpool: ' + esc(hopLabel(h))); });
+  steps.filter(function (s) { return s.phase === 'whirl' && s.timer; }).forEach(function (s) { w.push(esc(s.title)); });
+  var pM = maxFermTemp(r); w.push('Heiß umfüllen, im Gärbehälter abkühlen auf ' + (pM !== null ? 'höchstens ' + esc(fmtT(pM)) : 'Gärtemperatur'));
+  card('whirl', w);
+  card('pitch', [r.og !== null ? 'Stammwürze-Ziel ' + fmtNum(r.og, 1) + ' °P' : 'Stammwürze messen', 'Hefe: ' + esc(r.yeast || '–')]);
+  var g = [];
+  r.dryHops.forEach(function (h) { g.push('Hopfenstopfen: ' + esc(fmtNum(h.amount, h.amount < 10 ? 1 : 0)) + ' g ' + esc(h.name)); });
+  g.unshift('Hauptgärung bei ' + esc(r.fermTemp ? r.fermTemp + ' °C' : 'Gärtemperatur'));
+  r.fermAdds.forEach(function (z) { g.push(esc(addLabel(z))); });
+  g.push('Endvergärung prüfen'); g.push('Abfüllen' + (r.carbonation !== null ? ' mit ' + fmtNum(r.carbonation, 1) + ' g/l CO₂' : '')); g.push('Nachgärung und Lagerung');
+  card('ferm', g);
+  return '<div class="flow">' + cards.join('') + '</div>';
+}
+function mashChart() {
+  var p = mashProfile(RS, 1);
+  if (!p.pts.length) return '<p class="meta">Keine Rasten im Rezept.</p>';
+  var W = 640, H = 230, L = 40, Rr = 10, T = 26, B = 34;
+  var temps = p.pts.map(function (x) { return x[1]; });
+  var lo = Math.floor((Math.min.apply(null, temps) - 6) / 10) * 10, hi = Math.ceil((Math.max.apply(null, temps) + 6) / 10) * 10;
+  var X = function (t) { return L + t / p.total * (W - L - Rr); }, Y = function (v) { return T + (hi - v) / (hi - lo) * (H - T - B); };
+  var grid = '', ax = '';
+  for (var v = lo; v <= hi; v += 10) { grid += '<line x1="' + L + '" x2="' + (W - Rr) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/>'; ax += '<text x="' + (L - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + '</text>'; }
+  var stepT = p.total > 150 ? 30 : p.total > 60 ? 15 : 10;
+  for (var t = 0; t <= p.total; t += stepT) ax += '<text x="' + X(t) + '" y="' + (H - B + 16) + '" text-anchor="middle">' + t + '</text>';
+  var d = p.pts.map(function (q, i) { return (i ? 'L' : 'M') + X(q[0]).toFixed(1) + ' ' + Y(q[1]).toFixed(1); }).join(' ');
+  var area = d + ' L' + X(p.total).toFixed(1) + ' ' + Y(lo) + ' L' + X(0) + ' ' + Y(lo) + ' Z';
+  var labels = '', hits = '';
+  p.segs.forEach(function (s, i) {
+    var cx = (X(s.t0) + X(s.t1)) / 2, wpx = X(s.t1) - X(s.t0);
+    var txt = s.mashout ? fmtT(s.temp) : s.dec ? 'Dekoktion' : fmtT(s.temp) + ' · ' + fmtNum(s.t1 - s.t0, 1) + ' min';
+    var dupe = s.mashout && i > 0 && Math.abs(p.segs[i - 1].temp - s.temp) < 0.5;
+    if ((wpx > 44 || s.mashout) && !dupe) labels += '<text class="pl" x="' + cx + '" y="' + (Y(s.temp) - 8) + '" text-anchor="middle">' + esc(wpx > 80 || s.mashout ? txt : fmtT(s.temp)) + '</text>';
+    hits += '<rect x="' + X(s.t0) + '" y="' + T + '" width="' + Math.max(8, wpx) + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(s.label + ': ' + fmtT(s.temp) + (s.mashout ? '' : ', ' + fmtNum(s.t1 - s.t0, 1) + ' min')) + '"/>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Maischplan: Temperatur über Zeit">' +
+    '<g class="grid">' + grid + '</g><g class="axis">' + ax + '<text x="' + L + '" y="14">°C</text><text x="' + (W - Rr) + '" y="' + (H - 2) + '" text-anchor="end">Minuten ab Einmaischen (Aufheizen mit 1 °C/min angenommen)</text></g>' +
+    '<path d="' + area + '" fill="var(--accent)" opacity=".12"/><path d="' + d + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>' + labels + hits + '</svg>';
+}
+function boilChart() {
+  var r = RS, B = r.boilTime, W = 640, H = 150, L = 70, Rr = 90, y = 70;
+  var X = function (t) { return L + (B - t) / B * (W - L - Rr); };
+  var marks = [];
+  r.hops.forEach(function (h) {
+    if (h.type === 'fwh') marks.push({ x: L - 34, lab: 'VWH', tip: 'Vorderwürze: ' + hopLabel(h) });
+    else if (h.type === 'whirlpool') marks.push({ x: W - Rr + 44, lab: 'WP', tip: 'Whirlpool: ' + hopLabel(h) });
+    else { var t = Math.max(0, Math.min(B, h.time)); marks.push({ x: X(t), lab: fmtNum(t, 0), tip: t + ' min: ' + hopLabel(h) }); }
+  });
+  r.boilAdds.forEach(function (z) { var t = Math.max(0, Math.min(B, z.time)); marks.push({ x: X(t), lab: fmtNum(t, 0), tip: t + ' min: ' + addLabel(z), sq: true }); });
+  marks.sort(function (a, b) { return a.x - b.x; });
+  var out = '', lastX = -99, lane = 0;
+  marks.forEach(function (m) {
+    lane = Math.abs(m.x - lastX) < 26 ? lane + 1 : 0; lastX = m.x;
+    var my = y - 22 - lane * 16;
+    out += '<line x1="' + m.x + '" x2="' + m.x + '" y1="' + y + '" y2="' + (my + 4) + '" stroke="var(--muted)" stroke-width="1"/>' +
+      (m.sq ? '<rect x="' + (m.x - 5) + '" y="' + (my - 5) + '" width="10" height="10" rx="2" fill="var(--cool)" stroke="var(--panel)" stroke-width="2"/>'
+            : '<circle cx="' + m.x + '" cy="' + my + '" r="6" fill="var(--stir)" stroke="var(--panel)" stroke-width="2"/>') +
+      '<circle cx="' + m.x + '" cy="' + my + '" r="14" fill="transparent" data-tip="' + esc(m.tip) + '"/>';
+  });
+  var ticks = '';
+  [B, Math.round(B * 2 / 3), Math.round(B / 3), 0].forEach(function (t) { ticks += '<text x="' + X(t) + '" y="' + (y + 22) + '" text-anchor="middle">' + t + '</text>'; });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Kochplan mit Zugabezeitpunkten">' +
+    '<rect x="' + L + '" y="' + (y - 4) + '" width="' + (W - L - Rr) + '" height="8" rx="4" fill="var(--boil)"/>' +
+    '<g class="axis">' + ticks + '<text x="' + (L - 34) + '" y="' + (y + 22) + '" text-anchor="middle">Läutern</text><text x="' + (W - Rr + 44) + '" y="' + (y + 22) + '" text-anchor="middle">Whirlpool</text>' +
+    '<text x="' + ((L + W - Rr) / 2) + '" y="' + (y + 42) + '" text-anchor="middle">Restkochzeit in Minuten · Kreis = Hopfen, Quadrat = weitere Zutat</text></g>' + out + '</svg>';
+}
+function renderOverview() {
+  st.mode = 'overview'; view = 'overview'; renderTop();
+  var r = RS, kg = maltTotalKg(r);
+  var inProgress = st.started;
+  var html = '<div class="ov">';
+  if (st.demo) html += '<div class="demo"><strong>Das ist ein Beispielrezept zum Ausprobieren.</strong><span>Für deinen Brautag lade dein eigenes Rezept.</span><button class="btn" data-act="import">' + I.upload + 'Eigenes Rezept laden</button></div>';
+  html += '<section class="card"><div><h2 class="rtitle">' + esc(R.name) + '</h2><div class="meta">' + esc([R.style, R.author, R.date].filter(Boolean).join(' · ')) + '</div><div class="meta">Quelle: ' + esc(R.format === 'maischemalzundmehr.de' ? 'maischemalzundmehr.de (JSON)' : R.format + '-Datei') + '</div></div>' +
+    '<div class="stats">' + stat('Ausschlag', sv(r.batchL, 1, 'L')) + stat('Stammwürze', sv(r.og, 1, '°P')) + stat('Bittere', sv(r.ibu, 0, 'IBU')) +
+    stat('Farbe', sv(r.ebc, 0, 'EBC')) + stat('Alkohol', sv(r.abv, 1, '%')) + stat('SHA', sv(r.sha, 1, '%')) + '</div>' +
+    (R.batchL === null
+      ? '<div class="found"><strong>Werte von der Rezeptseite eintragen</strong><span>Der Export enthält bei diesem Rezept keine Ausschlagwürze' + (R.sha === null ? ' und keine Sudhausausbeute' : '') + '. Auf der Rezeptseite stehen sie unter dem Titel: „für … Liter Ausschlagwürze bei … % Sudhausausbeute“.</span>' +
+        '<div class="scale"><label for="manL">Ausschlagwürze</label><input id="manL" type="number" inputmode="decimal" min="1" max="500" step="0.1"><span>L</span>' +
+        (R.sha === null ? '<label for="manS">Sudhausausbeute</label><input id="manS" type="number" inputmode="decimal" min="1" max="100" step="0.1"><span>%</span>' : '') +
+        '<button class="btn primary" data-act="manualSet"' + (inProgress ? ' aria-disabled="true"' : '') + '>Übernehmen</button></div></div>'
+      : '<div class="scale"><label for="scaleL"><strong>Ausschlagwürze für deinen Sud</strong></label><input id="scaleL" type="number" inputmode="decimal" min="1" max="200" step="0.5" value="' + esc(fmtNum(r.batchL, 1).replace(',', '.')) + '"' + (inProgress ? ' disabled' : '') + '><span>L</span>' +
+        '<span class="meta">' + (r.factor !== 1 ? 'Faktor ' + fmtNum(r.factor, 2) + ' · Rezept: ' + fmtNum(R.batchL, 1) + ' L' : 'wie im Rezept') + (R.batchManual ? ' · Rezeptwert von dir eingetragen' : '') + (inProgress ? ' · während des Brauens gesperrt' : '') + '</span>' +
+        '<span class="meta" style="flex-basis:100%">Beim Ändern rechnet die App Malz, Hopfen, weitere Zutaten, Haupt- und Nachguss im gleichen Verhältnis um. Temperaturen und Zeiten bleiben gleich.</span>' +
+        (R.batchManual && !inProgress ? '<button class="btn" data-act="manualReset">Eingetragene Werte ändern</button>' : '') + '</div>') +
+    '<dl class="kv"><dt>Hauptguss</dt><dd>' + esc(fmtL(r.mainWater)) + '</dd><dt>Nachguss</dt><dd>' + esc(fmtL(r.spargeWater)) + '</dd><dt>Schüttung</dt><dd>' + esc(fmtNum(kg, 2)) + ' kg</dd>' +
+    '<dt>Maischevolumen ca.</dt><dd>' + (r.mainWater !== null ? esc(fmtL(r.mainWater + kg * 0.7)) : '–') + '</dd><dt>Kochzeit</dt><dd>' + fmtNum(r.boilTime, 0) + ' min</dd><dt>Hefe</dt><dd>' + esc(r.yeast || '–') + '</dd></dl>' +
+    '<p class="meta">Maischevolumen ≈ Hauptguss + 0,7 L je kg Malz. Passt es nicht in deinen Einkochtopf, reduziere die Ausschlagwürze.</p>' +
+    (R.warnings.length ? '<div class="warns"><strong>Hinweise zum Rezept und Import</strong><ul>' + R.warnings.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul></div>' : '') +
+    '</section>';
+  html += '<section class="card"><h2>Brauablauf · ' + steps.length + ' Schritte</h2>' + flowCards() +
+    '<div class="chart"><h3>Maischplan</h3>' + mashChart() + '</div><div class="chart"><h3>Kochplan</h3>' + boilChart() + '</div>' +
+    '<div class="startbar">' + (inProgress
+      ? '<button class="btn primary big" data-act="resume">' + I.next + 'Weiter brauen: Schritt ' + (st.idx + 1) + ' von ' + steps.length + '</button><button class="btn" data-act="restart">Von vorn beginnen</button>'
+      : '<button class="btn primary big" data-act="start">' + I.next + 'Start</button><span class="meta">Jeder Schritt wird mit Häkchen und OK bestätigt. Zurückgehen ist jederzeit möglich.</span>') +
+    '<button class="btn" data-act="pdf">Brauprotokoll als PDF</button></div><div id="pdfout" class="imgout"></div>' + '<p class="meta">Sudhelfer ist ein privates Hobby-Projekt. Es steht in keiner Verbindung zu maischemalzundmehr.de und ist kein offizielles Angebot der Seite. Die Rezepte stammen von den jeweiligen Autorinnen und Autoren.<br>© 2026 Daniel Menzel · MIT-Lizenz · erstellt mit Unterstützung von Claude (Anthropic) · <a href="#lizenz" data-act="license">Lizenz anzeigen</a></p>' + '</section></div>';
+  $('#view').innerHTML = html;
+  var inp = $('#scaleL');
+  if (inp) inp.addEventListener('change', function () {
+    var v = parseFloat(String(inp.value).replace(',', '.'));
+    if (!(v > 0)) { inp.value = fmtNum(RS.batchL, 1).replace(',', '.'); return; }
+    st.scaleL = Math.abs(v - R.batchL) < 0.01 ? null : v; rebuild(); save(); renderOverview();
+  });
+}
+
+/* ---------- Rendering: Brauen ---------- */
+function stepTimerKind(s) { return s.timer ? s.timer.kind : null; }
+function enterStep() {
+  var s = steps[st.idx];
+  st.confirm[s.id] = false;
+  if (!st.entered[s.id]) st.entered[s.id] = now();
+  if (s.timer && s.timer.kind === 'rest' && !st.timers[s.id]) st.timers[s.id] = { dur: s.timer.minutes * 60000, start: now(), acc: 0 };
+  save();
+}
+function renderBrew() {
+  st.mode = 'brew'; view = 'brew'; renderTop();
+  var s = steps[st.idx], nx = steps[st.idx + 1];
+  var tmode = s.temp.mode, tv = s.temp.value;
+  var modeTxt = { heat: 'Heizen', hold: 'Halten', boil: 'Kochen', cool: 'Kühlen', off: 'Aus' }[tmode];
+  var tempHtml = '<div class="tile t-temp m-' + tmode + '" aria-live="polite"><div class="lbl">' + esc(s.temp.label) + '</div>' +
+    (s.temp.display ? '<div class="tval num' + (s.temp.display.length > 5 ? ' rng' : '') + '">' + esc(s.temp.display) + '<sup>°C</sup></div>'
+      : tv !== null ? '<div class="tval num">' + (s.temp.max ? '<span class="le">≤</span>' : '') + esc(fmtNum(tv, 1)) + '<sup>°C</sup></div>' : '<div class="tval none">' + (tmode === 'off' ? 'Keine Hitze' : 'Kochen bis 0:00') + '</div>') +
+    '<div class="mode">' + modeTxt + '</div>' +
+    (tv !== null ? '<div class="thermo" aria-hidden="true"><i style="height:' + Math.max(4, Math.min(100, tv)) + '%"></i></div>' : '') + '</div>';
+  var stirTxt = { on: ['Rühren', 'Rührwerk an oder von Hand'], off: ['Nicht rühren', s.phase === 'lauter' ? 'Treber in Ruhe lassen' : 'Rührwerk aus'], hard: ['Kräftig rühren', s.phase === 'pitch' ? 'belüften: 1–2 min schwenken oder rühren' : 'von Hand, 1–2 min im Kreis'] }[s.stir];
+  var stirHtml = '<div class="tile t-stir s-' + s.stir + '">' + (s.stir === 'off' ? I.nostir : I.stir) + '<div><div class="sv">' + stirTxt[0] + '</div><div class="ss">' + stirTxt[1] + '</div></div></div>';
+  var timerHtml = s.timer ? '<div class="tile t-timer" id="ttile"><div class="lbl" id="tlbl"></div><div class="tt num" id="tval"></div><div class="tsub" id="tsub"></div><div class="tb" id="tbtns"></div></div>' : '';
+  var checks = st.checks[s.id] || [];
+  var since = st.entered[s.id];
+  var html = '<div class="brew"><section class="status' + (s.timer ? '' : ' notimer') + '">' + tempHtml + stirHtml + timerHtml + '</section>' +
+    '<section class="task" id="task"><div class="where"><span>' + esc(PH[s.phase]) + '</span><span class="num">Schritt ' + (st.idx + 1) + ' / ' + steps.length + (since ? ' · seit <span id="since"></span>' : '') + '</span></div>' +
+    '<h1>' + esc(s.title) + (s.sub ? '<small>' + esc(s.sub) + '</small>' : '') + '</h1><p class="do">' + esc(s.do) + '</p>';
+  if (s.items.length) html += '<div class="items">' + s.items.map(function (it) { return '<div class="il">' + esc(it.label) + '</div><div class="iv">' + esc(it.value) + '</div>'; }).join('') + '</div>';
+  if (s.calc === 'carb') html += safetyHtml(true) + carbCalcHtml();
+  else if (s.safety) html += safetyHtml(false);
+  if (s.calc === 'og') html += ogCalcHtml();
+  if (s.calc === 'fg') html += fgCalcHtml();
+  if (s.checks.length) html += '<div class="checks">' + s.checks.map(function (c, i) {
+    return '<label class="chk" for="c' + i + '"><input type="checkbox" id="c' + i + '" data-chk="' + i + '"' + (checks[i] ? ' checked' : '') + '><span>' + esc(c) + '</span></label>';
+  }).join('') + '</div>';
+  if (s.jod) html += '<button class="btn jodbtn" data-act="jodfail">Nicht jodnormal: Rast +10 min</button>';
+  s.info.forEach(function (t) { html += '<p class="info">' + esc(t) + '</p>'; });
+  if (s.phase === 'ferm' && RS.note) html += '<div class="pre">' + esc(RS.note) + '</div>';
+  html += '<div class="next">' + (nx ? 'Als Nächstes: <b>' + esc(nx.title) + '</b>' : 'Das ist der letzte Schritt.') + '</div></section>' +
+    '<footer class="foot"><button class="btn big back" data-act="back"' + (st.idx === 0 ? ' aria-disabled="true"' : '') + '>' + I.back + '<span>Zurück</span></button>' +
+    '<label class="done" for="doneChk"><input type="checkbox" id="doneChk"' + (st.confirm[s.id] ? ' checked' : '') + '><span>Erledigt</span></label>' +
+    '<button class="btn big primary ok" id="okBtn" data-act="ok">OK' + I.next + '</button></footer></div>';
+  $('#view').innerHTML = html;
+  updateOk(); tick(true);
+}
+/* ---------- Sicherheitshinweis Flaschengärung ---------- */
+var WARN_ICO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5" stroke-linecap="round"/></svg>';
+function safetyHtml(full) {
+  if (!full) return '<div class="warnbox" role="note"><h2>' + WARN_ICO + 'Achtung: Gefahr platzender Flaschen</h2><span>Zu früh abgefülltes oder zu stark gezuckertes Bier baut in der Flasche zu viel Druck auf. Flaschen können platzen und durch Glassplitter schwer verletzen, besonders an den Augen. Du allein trägst die Verantwortung.</span></div>';
+  return '<div class="warnbox" role="note"><h2>' + WARN_ICO + 'Sicherheitshinweis: Verantwortung liegt bei dir</h2><ul>' +
+    '<li><b>Flaschenbomben:</b> Zu viel Zucker oder nicht endvergorenes Bier erzeugen in der Flasche zu viel Druck. Flaschen können platzen. Glassplitter verletzen schwer, besonders die Augen.</li>' +
+    '<li><b>Rezepte können Fehler enthalten:</b> Die Rezepte auf maischemalzundmehr.de sind Hobby-Rezepte, von Nutzern eingestellt und nicht geprüft. Tippfehler bei Karbonisierung, Endvergärungsgrad oder Mengen kommen vor.</li>' +
+    '<li><b>Die App rechnet nur Näherungswerte:</b> Sie kennt dein Bier, deine Messwerte und deine Flaschen nicht und kann selbst Fehler enthalten. Prüfe jede Zahl selbst, bevor du sie verwendest.</li>' +
+    '<li><b>Nur endvergorenes Bier abfüllen</b> (Restextrakt an mehreren Tagen gleich). Nur unbeschädigte, druckfeste Flaschen verwenden. Über 6 g/l CO₂ nur Flaschen, die dafür ausgelegt sind.</li>' +
+    '<li><b>Ohne Gewähr:</b> Für Schäden durch die Nutzung der App, der Rezepte oder der berechneten Werte wird keine Haftung übernommen. Du entscheidest und handelst auf eigene Verantwortung.</li></ul></div>';
+}
+function carbState() {
+  var mx = maxFermTemp(RS);
+  st.carb = st.carb || { vol: RS.batchL !== null ? String(Math.round(RS.batchL * 0.85 * 10) / 10) : '', temp: mx !== null ? String(mx) : '20', target: RS.carbonation !== null ? String(RS.carbonation) : '' };
+  return st.carb;
+}
+function carbCalcHtml() {
+  var m = carbState();
+  return '<div class="calc" id="carbcalc"><strong>Rechner: Haushaltszucker für die Flaschengärung (optional)</strong>' +
+    '<div class="grid">' +
+    '<label for="cVol">Bier zum Abfüllen L<input id="cVol" data-c="vol" type="number" inputmode="decimal" step="0.1" min="0" max="500" value="' + esc(m.vol) + '"></label>' +
+    '<label for="cTemp">Höchste Temperatur des Jungbiers seit Gärende °C<input id="cTemp" data-c="temp" type="number" inputmode="decimal" step="0.5" min="0" max="35" value="' + esc(m.temp) + '"></label>' +
+    '<label for="cTgt">Ziel-CO₂ g/l' + (RS.carbonation !== null ? ' (Rezept: ' + fmtNum(RS.carbonation, 1) + ')' : '') + '<input id="cTgt" data-c="target" type="number" inputmode="decimal" step="0.1" min="0" max="10" value="' + esc(m.target) + '"></label>' +
+    '</div><div id="carbres" aria-live="polite">' + carbResultHtml() + '</div></div>';
+}
+function carbResultHtml() {
+  var m = carbState(), vol = pnum(m.vol), t = pnum(m.temp), tgt = pnum(m.target);
+  if (!(tgt > 0) || t === null) return '<div class="res"><span class="meta">Trag Ziel-CO₂ und Temperatur ein.</span></div>';
+  var r = carbSugar(tgt, t, vol > 0 ? vol : null), h = '';
+  var head = '<span>Im Jungbier gelöst: ' + fmtNum(r.residual, 2) + ' g/l CO₂ bei ' + fmtNum(t, 1) + ' °C · fehlen: ' + fmtNum(Math.max(0, r.need), 2) + ' g/l</span>';
+  if (r.need <= 0) h = '<div class="res ok">' + head + '<strong>Kein Zucker nötig: Das Jungbier enthält bereits genug CO₂.</strong>';
+  else {
+    h = '<div class="res ' + (tgt > 6 ? 'low' : 'ok') + '">' + head +
+      '<span class="big">' + fmtNum(r.sugarPerL, 1) + ' g/l Haushaltszucker</span>' +
+      (r.sugarTotal !== null ? '<strong>Gesamt: ' + fmtNum(r.sugarTotal, 0) + ' g Haushaltszucker für ' + fmtNum(vol, 1) + ' L</strong>' : '<span class="meta">Trag die Biermenge ein, dann rechnet die App die Gesamtmenge.</span>') +
+      '<ul><li>Pro Flasche: 0,33 L = ' + fmtNum(r.sugarPerL * 0.33, 1) + ' g · 0,5 L = ' + fmtNum(r.sugarPerL * 0.5, 1) + ' g · 0,75 L = ' + fmtNum(r.sugarPerL * 0.75, 1) + ' g</li>' +
+      '<li>Mit Traubenzucker statt Haushaltszucker: ' + fmtNum(r.sugarPerL * 1.09, 1) + ' g/l' + (r.dextroseTotal !== null ? ', gesamt ' + fmtNum(r.dextroseTotal, 0) + ' g' : '') + '</li></ul>' +
+      (tgt > 6 ? '<strong>Achtung: Über 6 g/l CO₂ nur Flaschen verwenden, die für diesen Druck ausgelegt sind. Normale Bierflaschen können platzen.</strong>' : '');
+  }
+  return h + '<span class="meta">Restkohlensäure nach der Formel des MMuM-Spunddruckrechners (Braukaiser), 46,8 g CO₂ je 100 g vergorenem Zucker, Traubenzucker mit 9 % mehr Menge. Näherungswerte ohne Gewähr: Prüfe das Ergebnis selbst.</span></div>';
+}
+document.addEventListener('input', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-c'); if (!k || !st) return;
+  carbState()[k] = e.target.value; save();
+  var r = $('#carbres'); if (r) r.innerHTML = carbResultHtml();
+});
+
+/* ---------- Restextrakt / Alkohol ---------- */
+function measuredOG() {
+  var m = st.meas; if (!m) return null;
+  var v = pnum(m.val); if (!(v > 0)) return null;
+  return m.dev === 'spindel' ? hydroCorrect(v, pnum(m.temp) === null ? 20 : pnum(m.temp), 20) : brixToPlato(v, 1.03);
+}
+function expectedFG() { return (RS.og !== null && RS.attenuation !== null) ? RS.og * (1 - RS.attenuation / 100) : null; }
+function fgState() { st.fg = st.fg || { val: '', temp: '20' }; return st.fg; }
+function measuredFG() { var f = st.fg; if (!f) return null; var v = pnum(f.val); if (v === null || v < 0) return null; return hydroCorrect(v, pnum(f.temp) === null ? 20 : pnum(f.temp), 20); }
+function fgCalcHtml() {
+  var f = fgState();
+  return '<div class="calc" id="fgcalc"><strong>Restextrakt eintragen (optional, für die Alkoholberechnung)</strong><div class="grid">' +
+    '<label for="fVal">Restextrakt Spindel °P<input id="fVal" data-f="val" type="number" inputmode="decimal" step="0.1" min="-2" max="20" value="' + esc(f.val) + '"></label>' +
+    '<label for="fTemp">Temperatur der Probe °C<input id="fTemp" data-f="temp" type="number" inputmode="decimal" step="0.5" min="0" max="40" value="' + esc(f.temp) + '"></label>' +
+    '</div><div id="fgres" aria-live="polite">' + fgResultHtml() + '</div></div>';
+}
+function fgResultHtml() {
+  var fg = measuredFG(); if (fg === null) return '<div class="res"><span class="meta">Mit dem letzten, gleichbleibenden Messwert rechnet die App am Ende den Alkoholgehalt.</span></div>';
+  var og = measuredOG() || RS.og, exp = expectedFG(), h = '<div class="res ' + (exp !== null && fg > exp + 1 ? 'low' : 'ok') + '"><span class="big">' + fmtNum(fg, 1) + ' °P</span>';
+  if (og) h += '<span>Scheinbarer Vergärungsgrad ' + fmtNum(apparentAttenuation(og, fg), 0) + ' %' + (RS.attenuation !== null ? ' (Rezept: ' + fmtNum(RS.attenuation, 0) + ' %)' : '') + ' · Alkohol vor dem Abfüllen ca. ' + fmtNum(abvFromGravity(og, fg), 1) + ' % vol</span>';
+  if (exp !== null && fg > exp + 1) h += '<strong>Deutlich über dem erwarteten Restextrakt (ca. ' + fmtNum(exp, 1) + ' °P). Nicht abfüllen, solange der Wert nicht geklärt ist.</strong>';
+  return h + '</div>';
+}
+document.addEventListener('input', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-f'); if (!k || !st) return;
+  fgState()[k] = e.target.value; save();
+  var r = $('#fgres'); if (r) r.innerHTML = fgResultHtml();
+});
+function carbSugarGL() {
+  var m = st.carb; if (!m) return 0;
+  var t = pnum(m.temp), tgt = pnum(m.target); if (!(tgt > 0) || t === null) return 0;
+  return carbSugar(tgt, t, null).sugarPerL;
+}
+function alcState() {
+  if (!st.alc) {
+    var og = measuredOG() || RS.og, fg = measuredFG(); if (fg === null) fg = expectedFG();
+    st.alc = { og: og !== null ? String(Math.round(og * 10) / 10) : '', fg: fg !== null ? String(Math.round(fg * 10) / 10) : '', sugar: String(Math.round(carbSugarGL() * 10) / 10) };
+  }
+  return st.alc;
+}
+function alcCalc() {
+  var a = alcState(), og = pnum(a.og), fg = pnum(a.fg), su = pnum(a.sugar) || 0;
+  if (!(og > 0) || fg === null || fg >= og) return null;
+  var base = abvFromGravity(og, fg), add = primingAbv(su);
+  return { base: base, add: add, total: base + add, sugar: su };
+}
+function alcHtml() {
+  var a = alcState(), r = alcCalc();
+  var src = [];
+  src.push(measuredOG() ? 'Stammwürze: dein Messwert' : 'Stammwürze: laut Rezept');
+  src.push(measuredFG() !== null ? 'Restextrakt: dein Messwert' : 'Restextrakt: erwartet aus Endvergärungsgrad');
+  return '<div class="calc"><div class="grid">' +
+    '<label for="aOg">Stammwürze °P<input id="aOg" data-a="og" type="number" inputmode="decimal" step="0.1" value="' + esc(a.og) + '"></label>' +
+    '<label for="aFg">Restextrakt (scheinbar) °P<input id="aFg" data-a="fg" type="number" inputmode="decimal" step="0.1" value="' + esc(a.fg) + '"></label>' +
+    '<label for="aSu">Haushaltszucker Flaschengärung g/l<input id="aSu" data-a="sugar" type="number" inputmode="decimal" step="0.1" value="' + esc(a.sugar) + '"></label>' +
+    '</div><div id="alcres" aria-live="polite">' + alcResultHtml(r) + '</div><span class="meta">' + esc(src.join(' · ')) + '. Hast du verdünnt oder aufgezuckert, trag die Stammwürze danach ein.</span></div>';
+}
+function alcResultHtml(r) {
+  if (!r) return '<div class="res"><span class="meta">Trag Stammwürze und Restextrakt ein (Restextrakt kleiner als Stammwürze).</span></div>';
+  return '<div class="res ok"><span class="abvbig">' + fmtNum(r.total, 1) + ' % vol</span>' +
+    '<span>' + fmtNum(r.base, 1) + ' % vol aus der Hauptgärung' + (r.sugar > 0 ? ' + ' + fmtNum(r.add, 2) + ' % vol aus ' + fmtNum(r.sugar, 1) + ' g/l Zucker der Flaschengärung' : '') + '</span>' +
+    '<span class="meta">Ja, der Zucker zählt mit: Die Hefe vergärt ihn in der Flasche zu Kohlensäure und Alkohol. Berechnung nach Balling, Näherungswert (etwa ±0,2 % vol).</span></div>';
+}
+document.addEventListener('input', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-a'); if (!k || !st) return;
+  alcState()[k] = e.target.value; save();
+  var r = $('#alcres'); if (r) r.innerHTML = alcResultHtml(alcCalc());
+  drawLabelPreview();
+});
+
+/* ---------- Etikett ---------- */
+function brewDate() {
+  var t = st.startedAt; if (!t && st.entered) { var v = Object.keys(st.entered).map(function (k) { return st.entered[k]; }); if (v.length) t = Math.min.apply(null, v); }
+  var d = new Date(t || now()); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function labelState() { st.label = st.label || { name: R.name.replace(/^Beispiel:\s*/, ''), style: R.style || '', date: brewDate(), brewer: '' }; return st.label; }
+function deDate(iso) { var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3] + '.' + m[2] + '.' + m[1] : iso; }
+var LW = 768, LH = 1063;   // 65 x 90 mm bei 300 dpi
+function drawHop(g, cx, cy, s) {
+  var ink = '#2f4a14', dark = '#4f7d1f', mid = '#7fb03a', light = '#b5d96a';
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  // Beine und Schuhe
+  g.strokeStyle = ink; g.lineWidth = s * 0.04;
+  g.beginPath(); g.moveTo(cx - s * 0.12, cy + s * 0.36); g.lineTo(cx - s * 0.17, cy + s * 0.62); g.stroke();
+  g.beginPath(); g.moveTo(cx + s * 0.12, cy + s * 0.36); g.lineTo(cx + s * 0.2, cy + s * 0.6); g.stroke();
+  g.fillStyle = '#6b3b1c';
+  g.beginPath(); g.ellipse(cx - s * 0.22, cy + s * 0.64, s * 0.09, s * 0.045, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(cx + s * 0.26, cy + s * 0.62, s * 0.09, s * 0.045, -0.3, 0, Math.PI * 2); g.fill();
+  // Arme: links winkt nach oben, rechts reckt Faust
+  g.strokeStyle = ink; g.lineWidth = s * 0.04;
+  g.beginPath(); g.moveTo(cx - s * 0.3, cy + s * 0.02); g.quadraticCurveTo(cx - s * 0.48, cy - s * 0.02, cx - s * 0.52, cy - s * 0.22); g.stroke();
+  g.beginPath(); g.moveTo(cx + s * 0.3, cy + s * 0.02); g.quadraticCurveTo(cx + s * 0.5, cy + s * 0.0, cx + s * 0.55, cy - s * 0.2); g.stroke();
+  g.fillStyle = light; g.strokeStyle = ink; g.lineWidth = s * 0.02;
+  [[-0.53, -0.26], [0.56, -0.24]].forEach(function (p) { g.beginPath(); g.arc(cx + s * p[0], cy + s * p[1], s * 0.055, 0, Math.PI * 2); g.fill(); g.stroke(); });
+  // Dolde: Grundform
+  function body() { g.beginPath(); g.moveTo(cx, cy - s * 0.46); g.bezierCurveTo(cx + s * 0.36, cy - s * 0.42, cx + s * 0.38, cy + s * 0.12, cx, cy + s * 0.46); g.bezierCurveTo(cx - s * 0.38, cy + s * 0.12, cx - s * 0.36, cy - s * 0.42, cx, cy - s * 0.46); g.closePath(); }
+  body(); g.fillStyle = mid; g.fill();
+  // Schuppen (Doldenblätter) in Reihen
+  g.save(); body(); g.clip();
+  var rows = [[-0.36, 2, 0.17], [-0.2, 3, 0.15], [-0.04, 3, 0.15], [0.12, 3, 0.14], [0.27, 2, 0.13], [0.4, 1, 0.12]];
+  rows.forEach(function (r, ri) {
+    var y = cy + s * r[0], n = r[1], w = s * r[2];
+    for (var i = 0; i < n; i++) {
+      var x = cx + (i - (n - 1) / 2) * w * 1.15 + (ri % 2 ? 0 : 0);
+      g.beginPath(); g.moveTo(x - w * 0.62, y - w * 0.2); g.quadraticCurveTo(x - w * 0.55, y + w * 0.75, x, y + w * 0.95); g.quadraticCurveTo(x + w * 0.55, y + w * 0.75, x + w * 0.62, y - w * 0.2); g.closePath();
+      var gr = g.createLinearGradient(x, y - w * 0.2, x, y + w * 0.95); gr.addColorStop(0, light); gr.addColorStop(1, mid);
+      g.fillStyle = gr; g.fill(); g.strokeStyle = dark; g.lineWidth = s * 0.012; g.stroke();
+    }
+  });
+  g.restore();
+  body(); g.strokeStyle = ink; g.lineWidth = s * 0.03; g.stroke();
+  // Stiel und Blatt
+  g.strokeStyle = '#6b3b1c'; g.lineWidth = s * 0.035;
+  g.beginPath(); g.moveTo(cx, cy - s * 0.46); g.quadraticCurveTo(cx + s * 0.02, cy - s * 0.58, cx + s * 0.1, cy - s * 0.62); g.stroke();
+  g.fillStyle = '#5c9a2a'; g.strokeStyle = ink; g.lineWidth = s * 0.018;
+  g.beginPath(); g.moveTo(cx + s * 0.08, cy - s * 0.6); g.quadraticCurveTo(cx + s * 0.22, cy - s * 0.78, cx + s * 0.38, cy - s * 0.66); g.quadraticCurveTo(cx + s * 0.25, cy - s * 0.52, cx + s * 0.08, cy - s * 0.6); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(cx + s * 0.1, cy - s * 0.6); g.lineTo(cx + s * 0.32, cy - s * 0.655); g.stroke();
+  // Gesicht: lachende Augen, offener Mund, Bäckchen
+  var fy = cy - s * 0.04;
+  g.strokeStyle = '#1d2b0c'; g.lineWidth = s * 0.032;
+  g.beginPath(); g.arc(cx - s * 0.11, fy, s * 0.055, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+  g.beginPath(); g.arc(cx + s * 0.11, fy, s * 0.055, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+  g.fillStyle = 'rgba(232,110,90,.55)';
+  g.beginPath(); g.ellipse(cx - s * 0.18, fy + s * 0.07, s * 0.05, s * 0.03, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(cx + s * 0.18, fy + s * 0.07, s * 0.05, s * 0.03, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.moveTo(cx - s * 0.12, fy + s * 0.07); g.quadraticCurveTo(cx, fy + s * 0.075, cx + s * 0.12, fy + s * 0.07); g.quadraticCurveTo(cx + s * 0.1, fy + s * 0.22, cx, fy + s * 0.22); g.quadraticCurveTo(cx - s * 0.1, fy + s * 0.22, cx - s * 0.12, fy + s * 0.07); g.closePath();
+  g.fillStyle = '#5a1f14'; g.fill(); g.strokeStyle = '#1d2b0c'; g.lineWidth = s * 0.022; g.stroke();
+  g.save(); g.clip(); g.fillStyle = '#e7786a'; g.beginPath(); g.ellipse(cx, fy + s * 0.21, s * 0.065, s * 0.045, 0, 0, Math.PI * 2); g.fill(); g.restore();
+  g.restore();
+}
+function fitText(g, text, maxW, size, weight, family, minSize) {
+  var sz = size; do { g.font = weight + ' ' + sz + 'px ' + family; if (g.measureText(text).width <= maxW) break; sz -= 2; } while (sz > minSize);
+  return sz;
+}
+function wrapTwo(g, text, maxW, size, weight, family) {
+  g.font = weight + ' ' + size + 'px ' + family;
+  if (g.measureText(text).width <= maxW) return [text];
+  var w = text.split(/\s+/), best = null;
+  for (var i = 1; i < w.length; i++) { var a = w.slice(0, i).join(' '), b = w.slice(i).join(' '); var m = Math.max(g.measureText(a).width, g.measureText(b).width); if (!best || m < best.m) best = { l: [a, b], m: m }; }
+  return best ? best.l : [text];
+}
+function renderLabel(cv) {
+  var L = labelState(), a = alcCalc();
+  var g = cv.getContext('2d'), mm = LW / 65, DISP = '"Avenir Next Condensed", "Helvetica Neue", Bahnschrift, "Roboto Condensed", "Arial Narrow", "DejaVu Sans Condensed", sans-serif', BODY = '-apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  try { g.fontStretch = 'condensed'; } catch (e) { }
+  var paper = '#f4ecd8', ink = '#3a2614', cop = '#9a4a1c';
+  g.clearRect(0, 0, LW, LH); g.fillStyle = paper; g.fillRect(0, 0, LW, LH);
+  g.strokeStyle = ink; g.lineWidth = mm * 0.6; g.strokeRect(mm * 3, mm * 3, LW - mm * 6, LH - mm * 6);
+  g.lineWidth = mm * 0.2; g.strokeRect(mm * 4.2, mm * 4.2, LW - mm * 8.4, LH - mm * 8.4);
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = cop;
+  g.font = '700 ' + Math.round(mm * 2.6) + 'px ' + BODY;
+  g.fillText('S E L B S T   G E B R A U T', LW / 2, mm * 9.6);
+  drawHop(g, LW / 2, mm * 28.5, mm * 22);
+  var name = (L.name || 'Mein Bier').toUpperCase(), maxW = LW - mm * 14;
+  var lines = wrapTwo(g, name, maxW, Math.round(mm * 8.5), 800, DISP), sz = Math.round(mm * 8.5);
+  lines.forEach(function (ln) { sz = Math.min(sz, fitText(g, ln, maxW, sz, 800, DISP, mm * 4)); });
+  g.fillStyle = ink; g.font = '800 ' + sz + 'px ' + DISP;
+  var y = lines.length > 1 ? mm * 51.8 : mm * 55.5;
+  lines.forEach(function (ln, i) { g.fillText(ln, LW / 2, y + i * sz * 0.95); });
+  y += (lines.length - 1) * sz * 0.95;
+  if (L.style) { fitText(g, L.style, maxW, Math.round(mm * 3.6), 400, BODY, mm * 2.4); g.fillText(L.style, LW / 2, mm * 64.6); }
+  g.strokeStyle = cop; g.lineWidth = mm * 0.35; g.beginPath(); g.moveTo(mm * 18, mm * 67); g.lineTo(LW - mm * 18, mm * 67); g.stroke();
+  g.fillStyle = cop; g.font = '800 ' + Math.round(mm * 5.2) + 'px ' + DISP;
+  g.fillText(a ? fmtNum(a.total, 1) + ' % VOL' : '– % VOL', LW / 2, mm * 74);
+  g.fillStyle = ink; g.font = '700 ' + Math.round(mm * 3.1) + 'px ' + BODY;
+  var stats = []; var og = pnum(alcState().og);
+  if (og) stats.push(fmtNum(og, 1) + ' °P'); if (RS.ibu !== null) stats.push(fmtNum(RS.ibu, 0) + ' IBU'); if (RS.ebc !== null) stats.push(fmtNum(RS.ebc, 0) + ' EBC');
+  g.fillText(stats.join('  ·  '), LW / 2, mm * 79);
+  g.font = '400 ' + Math.round(mm * 2.9) + 'px ' + BODY;
+  var foot = 'Gebraut am ' + deDate(L.date) + (L.brewer ? ' · ' + L.brewer : '');
+  fitText(g, foot, maxW, Math.round(mm * 2.9), 400, BODY, mm * 2); g.fillText(foot, LW / 2, mm * 83.6);
+}
+function drawLabelPreview() { var cv = $('#labelcv'); if (cv) renderLabel(cv); }
+function labelFields() {
+  var L = labelState();
+  return '<div class="fields">' +
+    '<label for="lName">Name<input id="lName" data-l="name" value="' + esc(L.name) + '"></label>' +
+    '<label for="lStyle">Sorte<input id="lStyle" data-l="style" value="' + esc(L.style) + '"></label>' +
+    '<label for="lDate">Brautag<input id="lDate" data-l="date" type="date" value="' + esc(L.date) + '"></label>' +
+    '<label for="lBrewer">Brauer oder Hausbrauerei (optional)<input id="lBrewer" data-l="brewer" value="' + esc(L.brewer) + '"></label>' +
+    '<div class="startbar"><button class="btn primary" data-act="saveLabel">Etikett als PNG</button><button class="btn" data-act="saveSheet">A4-Bogen mit 9 Etiketten</button></div>' +
+    '<span class="meta">65 × 90 mm, 300 dpi. Beim Drucken auf 100 % (Originalgröße) stellen. Logo und Gestaltung sind für diese App neu gezeichnet und stehen wie die App unter der MIT-Lizenz. Das Etikett nutzt die Systemschrift deines Geräts.</span>' +
+    '<div id="imgout" class="imgout"></div></div>';
+}
+document.addEventListener('input', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-l'); if (!k || !st) return;
+  labelState()[k] = e.target.value; save(); drawLabelPreview();
+});
+var dlNs = null;
+try { if (window.claude && window.claude.use) window.claude.use('downloads').then(function (n) { dlNs = n; }).catch(function () { dlNs = null; }); } catch (e) { }
+function fileSafe(t) { return String(t || 'Bier').replace(/[^\wäöüÄÖÜß\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'Bier'; }
+function offerBlob(blob, filename, outId) {
+  var out = $(outId || '#imgout');
+  function fallback(msg) {
+    if (!out) return; var url = URL.createObjectURL(blob);
+    out.innerHTML = /\.pdf$/.test(filename) ? '<p class="meta">Öffne das PDF über diesen Link und speichere oder drucke es von dort.</p><a class="btn" href="' + url + '" download="' + esc(filename) + '" target="_blank" rel="noopener">' + esc(filename) + ' öffnen</a>'
+      : '<p class="meta">' + esc(msg) + '</p><a href="' + url + '" download="' + esc(filename) + '"><img src="' + url + '" alt="' + esc(filename) + '"></a>';
+  }
+  if (dlNs) {
+    dlNs.save({ filename: filename, data: blob }).then(function () { if (out) out.innerHTML = '<p class="meta">Gespeichert: ' + esc(filename) + '</p>'; })
+      .catch(function (e) { if (e && e.code === 'declined') return; if (e && e.code === 'rate_limited') { if (out) out.innerHTML = '<p class="meta">Bitte kurz warten und erneut tippen.</p>'; return; } fallback('Speichern ist hier nicht möglich. Halte das Bild gedrückt (oder Rechtsklick) und sichere es.'); });
+  } else fallback('Halte das Bild gedrückt (oder Rechtsklick) und sichere es.');
+}
+function fontsReady() { return Promise.resolve(); }
+function saveLabel(sheet) {
+  fontsReady().then(function () {
+    var one = document.createElement('canvas'); one.width = LW; one.height = LH; renderLabel(one);
+    var cv = one, name = 'Etikett_' + fileSafe(labelState().name) + (sheet ? '_A4' : '') + '.png';
+    if (sheet) {
+      var mm = 300 / 25.4; cv = document.createElement('canvas'); cv.width = Math.round(210 * mm); cv.height = Math.round(297 * mm);
+      var g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height);
+      var ox = (cv.width - 3 * LW) / 2, oy = (cv.height - 3 * LH) / 2;
+      for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) g.drawImage(one, ox + c * LW, oy + r * LH);
+      g.strokeStyle = '#bbbbbb'; g.lineWidth = 1; g.setLineDash([12, 10]);
+      for (var i = 0; i <= 3; i++) { g.beginPath(); g.moveTo(ox + i * LW, oy - 30); g.lineTo(ox + i * LW, oy + 3 * LH + 30); g.stroke(); g.beginPath(); g.moveTo(ox - 30, oy + i * LH); g.lineTo(ox + 3 * LW + 30, oy + i * LH); g.stroke(); }
+    }
+    cv.toBlob(function (b) { if (b) offerBlob(b, name); }, 'image/png');
+  });
+}
+
+/* ---------- Brauprotokoll als PDF (eigener kleiner PDF-Erzeuger, Helvetica/WinAnsi) ---------- */
+var HW = { r: [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584, 761, 556, 556, 222, 556, 333, 1000, 556, 556, 333, 1000, 667, 333, 1000, 556, 611, 556, 556, 222, 222, 333, 333, 350, 556, 1000, 333, 1000, 500, 333, 944, 556, 500, 667, 278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333, 333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611, 667, 667, 667, 667, 667, 667, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556, 278, 278, 278, 278, 556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556, 500], b: [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584, 761, 556, 611, 278, 556, 500, 1000, 556, 556, 333, 1000, 667, 333, 1000, 611, 611, 611, 611, 278, 278, 500, 500, 350, 556, 1000, 333, 1000, 556, 333, 944, 611, 500, 667, 278, 333, 556, 556, 556, 556, 280, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333, 333, 333, 611, 556, 278, 333, 333, 365, 556, 834, 834, 834, 611, 722, 722, 722, 722, 722, 722, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 556, 556, 556, 556, 556, 278, 278, 278, 278, 611, 611, 611, 611, 611, 611, 611, 584, 611, 611, 611, 611, 611, 556, 611, 556] };
+var WIN = { '€': 128, '‚': 130, '„': 132, '…': 133, '‘': 145, '’': 146, '“': 147, '”': 148, '•': 149, '–': 150, '—': 151, '™': 153 };
+function pdfClean(t) {
+  return String(t === null || t === undefined ? '' : t).replace(/ | /g, ' ').replace(/α/g, 'Alpha').replace(/₂/g, '2')
+    .replace(/≤/g, 'max.').replace(/≈/g, 'ca.').replace(/→/g, '->').replace(/[^\u0000-ÿ€‚„…‘’“”•–—™]/g, '?');
+}
+function pdfCode(ch) { return WIN[ch] || ch.charCodeAt(0); }
+function pdfWidth(t, bold, size) { var w = 0, a = bold ? HW.b : HW.r; for (var i = 0; i < t.length; i++) { var code = pdfCode(t[i]); w += (code >= 32 && code <= 255 ? a[code - 32] : 556); } return w * size / 1000; }
+function pdfStr(t) { var o = ''; for (var i = 0; i < t.length; i++) { var code = pdfCode(t[i]); if (code > 255) code = 63; var c = String.fromCharCode(code); o += (c === '(' || c === ')' || c === '\\') ? '\\' + c : c; } return '(' + o + ')'; }
+function PdfDoc() { this.pages = []; this.W = 595.28; this.H = 841.89; this.M = 48; this.newPage(); }
+PdfDoc.prototype.newPage = function () { this.ops = []; this.pages.push(this.ops); this.y = this.M; };
+PdfDoc.prototype.need = function (h) { if (this.y + h > this.H - this.M - 14) this.newPage(); };
+PdfDoc.prototype.text = function (x, y, t, size, bold, rgb) { t = pdfClean(t); if (!t) return; this.ops.push((rgb || '0.12 0.12 0.12') + ' rg BT /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf ' + x.toFixed(2) + ' ' + (this.H - y).toFixed(2) + ' Td ' + pdfStr(t) + ' Tj ET'); };
+PdfDoc.prototype.line = function (x1, y1, x2, y2, w, rgb) { this.ops.push((rgb || '0.6 0.6 0.6') + ' RG ' + (w || 0.5) + ' w ' + x1.toFixed(2) + ' ' + (this.H - y1).toFixed(2) + ' m ' + x2.toFixed(2) + ' ' + (this.H - y2).toFixed(2) + ' l S'); };
+PdfDoc.prototype.box = function (x, y, s) { this.ops.push('0.25 0.25 0.25 RG 0.8 w ' + x.toFixed(2) + ' ' + (this.H - y - s).toFixed(2) + ' ' + s + ' ' + s + ' re S'); };
+PdfDoc.prototype.wrap = function (t, size, bold, maxW) {
+  t = pdfClean(t); var words = t.split(/\s+/), lines = [], cur = '';
+  words.forEach(function (w) { var test = cur ? cur + ' ' + w : w; if (pdfWidth(test, bold, size) > maxW && cur) { lines.push(cur); cur = w; } else cur = test; });
+  if (cur) lines.push(cur); return lines;
+};
+PdfDoc.prototype.para = function (t, size, bold, x, maxW, rgb, lead) {
+  var self = this, lh = size * (lead || 1.3); x = x || this.M; maxW = maxW || (this.W - x - this.M);
+  this.wrap(t, size, bold, maxW).forEach(function (ln) { self.need(lh); self.y += lh; self.text(x, self.y - size * 0.25, ln, size, bold, rgb); });
+};
+/* Zeile mit Kästchen und umbrochenem Text */
+PdfDoc.prototype.checkLine = function (x, t, size, bold, gap) {
+  var self = this, ls = this.wrap(t, size, bold, this.W - x - this.M - 14), lh = size * 1.35;
+  this.need(lh + (gap || 0)); this.y += lh + (gap || 0); this.box(x, this.y - size * 0.95, size * 0.85);
+  ls.forEach(function (ln, k) { if (k) { self.need(lh); self.y += lh; } self.text(x + 14, self.y - size * 0.2, ln, size, bold); });
+};
+PdfDoc.prototype.heading = function (t, size) { this.need(size * 3); this.y += size * 0.9; this.para(t, size, true, null, null, '0.55 0.27 0.1'); this.y += 3; this.line(this.M, this.y, this.W - this.M, this.y, 0.8, '0.55 0.27 0.1'); this.y += 4; };
+PdfDoc.prototype.kv = function (rows, cols) {
+  var colW = (this.W - 2 * this.M) / cols, lh = 15;
+  for (var i = 0; i < rows.length; i += cols) {
+    this.need(lh); this.y += lh;
+    for (var c = 0; c < cols && i + c < rows.length; c++) { var x = this.M + c * colW; this.text(x, this.y - 3, rows[i + c][0], 8.5, false, '0.4 0.4 0.4'); this.text(x + colW * 0.42, this.y - 3, rows[i + c][1], 9.5, true); }
+  }
+};
+PdfDoc.prototype.build = function (title) {
+  var objs = [], pageIds = [], self = this, n = this.pages.length;
+  function add(s) { objs.push(s); return objs.length; }
+  var f1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  var f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  var pagesId = add(null);
+  this.pages.forEach(function (ops, i) {
+    var foot = '0.45 0.45 0.45 rg BT /F1 7.5 Tf ' + self.M + ' 32 Td ' + pdfStr(pdfClean('Sudhelfer – privates Hobby-Projekt, kein offizielles Angebot von maischemalzundmehr.de – Angaben ohne Gewähr')) + ' Tj ET' +
+      '\nBT /F1 7.5 Tf ' + self.M + ' 22 Td ' + pdfStr(pdfClean('© 2026 Daniel Menzel · MIT-Lizenz · erstellt mit Unterstützung von Claude (Anthropic)')) + ' Tj ET' +
+      '\nBT /F1 7.5 Tf ' + (self.W - self.M - 40).toFixed(2) + ' 24 Td ' + pdfStr('Seite ' + (i + 1) + '/' + n) + ' Tj ET';
+    var content = ops.join('\n') + '\n' + foot;
+    var cid = add('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream');
+    pageIds.push(add('<< /Type /Page /Parent ' + pagesId + ' 0 R /MediaBox [0 0 ' + self.W + ' ' + self.H + '] /Resources << /Font << /F1 ' + f1 + ' 0 R /F2 ' + f2 + ' 0 R >> >> /Contents ' + cid + ' 0 R >>'));
+  });
+  objs[pagesId - 1] = '<< /Type /Pages /Kids [' + pageIds.map(function (p) { return p + ' 0 R'; }).join(' ') + '] /Count ' + n + ' >>';
+  var info = add('<< /Title ' + pdfStr(pdfClean(title)) + ' /Producer (Sudhelfer) >>');
+  var cat = add('<< /Type /Catalog /Pages ' + pagesId + ' 0 R >>');
+  var out = '%PDF-1.4\n%âãÏÓ\n', offs = [];
+  objs.forEach(function (o, i) { offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
+  var xref = out.length;
+  out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n' + offs.map(function (o) { return String(o).padStart(10, '0') + ' 00000 n \n'; }).join('');
+  out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root ' + cat + ' 0 R /Info ' + info + ' 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  var bytes = new Uint8Array(out.length); for (var i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+  return new Blob([bytes], { type: 'application/pdf' });
+};
+function buildProtocol() {
+  var r = RS, d = new PdfDoc(), M = d.M, W = d.W;
+  d.para('BRAUPROTOKOLL', 9, true, null, null, '0.55 0.27 0.1');
+  d.para(R.name, 22, true, null, null, null, 1.15);
+  d.para([R.style, R.author ? 'von ' + R.author : '', R.date ? 'Rezept vom ' + R.date : ''].filter(Boolean).join(' · '), 10, false, null, null, '0.35 0.35 0.35');
+  d.para('Quelle: ' + (R.source || 'maischemalzundmehr.de') + (r.factor !== 1 ? ' · umgerechnet auf ' + fmtNum(r.batchL, 1) + ' L (Faktor ' + fmtNum(r.factor, 2) + ')' : ''), 9, false, null, null, '0.35 0.35 0.35');
+  d.y += 22; d.text(M, d.y, 'Brautag:', 10, true); d.text(M + 52, d.y, st.started ? deDate(brewDate()) : '', 10, false); d.line(M + 50, d.y + 3, M + 200, d.y + 3);
+  d.text(M + 230, d.y, 'Brauer:', 10, true); d.text(M + 276, d.y, (st.label && st.label.brewer) || '', 10, false); d.line(M + 274, d.y + 3, W - M, d.y + 3);
+  d.heading('Eckdaten', 13);
+  d.kv([['Ausschlagwürze', r.batchL !== null ? fmtL(r.batchL) : '–'], ['Stammwürze', r.og !== null ? fmtNum(r.og, 1) + ' °P' : '–'], ['Bittere', r.ibu !== null ? fmtNum(r.ibu, 0) + ' IBU' : '–'],
+    ['Farbe', r.ebc !== null ? fmtNum(r.ebc, 0) + ' EBC' : '–'], ['Alkohol (Rezept)', r.abv !== null ? fmtNum(r.abv, 1) + ' % vol' : '–'], ['Sudhausausbeute', r.sha !== null ? fmtNum(r.sha, 1) + ' %' : '–'],
+    ['Hauptguss', fmtL(r.mainWater)], ['Nachguss', fmtL(r.spargeWater)], ['Kochzeit', fmtNum(r.boilTime, 0) + ' min'],
+    ['Hefe', r.yeast || '–'], ['Gärtemperatur', r.fermTemp ? r.fermTemp + ' °C' : '–'], ['Endvergärungsgrad', r.attenuation !== null ? fmtNum(r.attenuation, 0) + ' %' : '–'],
+    ['Karbonisierung', r.carbonation !== null ? fmtNum(r.carbonation, 1) + ' g/l CO2' : '–']], 2);
+  d.heading('Zutaten', 13);
+  var rows = r.malts.map(function (m) { return ['Malz', fmtAmount(m.amount, m.unit) + ' ' + m.name]; })
+    .concat(r.hops.map(function (h) { return ['Hopfen ' + (h.type === 'fwh' ? 'Vorderwürze' : h.type === 'whirlpool' ? 'Whirlpool' : fmtNum(Math.min(h.time, r.boilTime), 0) + ' min'), hopLabel(h)]; }))
+    .concat(r.boilAdds.map(function (z) { return ['Zutat ' + fmtNum(Math.min(z.time, r.boilTime), 0) + ' min', addLabel(z)]; }))
+    .concat(r.dryHops.map(function (h) { return ['Stopfhopfen', fmtAmount(h.amount, 'g') + ' ' + h.name]; }))
+    .concat(r.fermAdds.map(function (z) { return ['Zutat Gärung', addLabel(z)]; }))
+    .concat(r.yeast ? [['Hefe', r.yeast]] : []);
+  rows.forEach(function (rw) {
+    var ls = d.wrap(rw[1], 9.5, true, W - 2 * M - 140);
+    d.need(14); d.y += 14; d.box(M, d.y - 9, 8); d.text(M + 14, d.y - 2, rw[0], 8.5, false, '0.4 0.4 0.4');
+    ls.forEach(function (ln, i) { if (i) { d.need(12); d.y += 12; } d.text(M + 130, d.y - 2, ln, 9.5, true); });
+  });
+  d.heading('Brauablauf', 13);
+  var last = '', stirTxt = { on: 'Rühren', off: 'Nicht rühren', hard: 'Kräftig rühren' };
+  steps.forEach(function (s, i) {
+    if (s.phase !== last) { last = s.phase; d.need(60); d.y += 6; d.para(PH[s.phase], 11.5, true, null, null, '0.55 0.27 0.1'); }
+    d.need(48);
+    d.checkLine(M, (i + 1) + '. ' + s.title, 10.5, true, 6);
+    var tags = [];
+    if (s.temp.display) tags.push(s.temp.display + ' °C');
+    else if (s.temp.value !== null) tags.push((s.temp.max ? 'max. ' : '') + fmtNum(s.temp.value, 1) + ' °C (' + s.temp.label + ')');
+    else if (s.temp.label) tags.push(s.temp.label);
+    tags.push(stirTxt[s.stir]);
+    if (s.timer && s.timer.kind === 'rest') tags.push(fmtNum(s.timer.minutes, 1) + ' min');
+    if (s.timer && s.timer.kind === 'boilAt') tags.push('bei ' + fmtNum(s.timer.at, 1) + ' min Restkochzeit');
+    if (s.timer && s.timer.kind === 'boilStart') tags.push('Kochzeit ' + fmtNum(s.timer.minutes, 0) + ' min');
+    d.para(tags.join(' · '), 8.5, true, M + 14, null, '0.55 0.27 0.1', 1.35);
+    d.para(s.do, 9.5, false, M + 14, null, null, 1.32);
+    s.items.forEach(function (it) { d.para(it.label + ': ' + it.value, 9, false, M + 22, null, '0.25 0.25 0.25', 1.3); });
+    s.checks.forEach(function (c) { d.checkLine(M + 22, c, 9, false, 1); });
+    if (s.timer && s.timer.kind === 'rest') d.para('Uhrzeit Start: ____________   Ende: ____________', 9, false, M + 22, null, '0.35 0.35 0.35', 1.8);
+    if (s.calc === 'og') d.para('Gemessen: ________ °P bei ______ °C   Menge: ________ L', 9, false, M + 22, null, '0.35 0.35 0.35', 1.8);
+    if (s.calc === 'fg') d.para('Restextrakt Tag 1: ______   Tag 2: ______   Tag 3: ______ °P', 9, false, M + 22, null, '0.35 0.35 0.35', 1.8);
+    if (s.calc === 'carb') d.para('Zucker: ________ g für ________ L  (________ g/l)', 9, false, M + 22, null, '0.35 0.35 0.35', 1.8);
+    d.y += 3;
+  });
+  d.heading('Messwerte', 13);
+  var mo = measuredOG(), mf = measuredFG(), ac = (st.mode === 'finished' || st.alc) ? alcCalc() : null, su = carbSugarGL();
+  d.kv([['Stammwürze gemessen', mo ? fmtNum(mo, 1) + ' °P' : '________ °P'], ['Restextrakt gemessen', mf !== null ? fmtNum(mf, 1) + ' °P' : '________ °P'],
+    ['Zucker Flaschengärung', su > 0 ? fmtNum(su, 1) + ' g/l' : '________ g/l'], ['Alkohol', ac ? fmtNum(ac.total, 1) + ' % vol' : '________ % vol'],
+    ['Abfülldatum', '______________'], ['Flaschen', '______________']], 2);
+  d.heading('Notizen', 13);
+  for (var k = 0; k < 7; k++) { d.need(22); d.y += 22; d.line(M, d.y, W - M, d.y, 0.4, '0.7 0.7 0.7'); }
+  if (R.note) { d.heading('Anmerkung des Autors (aus dem Rezept)', 11); d.para(R.note, 9, false, null, null, '0.25 0.25 0.25'); }
+  d.heading('Wichtiger Hinweis', 11);
+  d.para('Flaschengärung: Nur vollständig endvergorenes Bier abfüllen. Zu viel Zucker oder zu frühes Abfüllen erzeugt zu viel Druck. Flaschen können platzen und durch Glassplitter schwer verletzen. Nur unbeschädigte, druckfeste Flaschen verwenden.', 9, false);
+  d.y += 3;
+  d.para('Die Rezepte auf maischemalzundmehr.de sind ungeprüfte Hobby-Rezepte und können Fehler enthalten. Alle Werte dieser App sind Näherungen ohne Gewähr. Es wird keine Haftung übernommen. Du braust auf eigene Verantwortung.', 9, false);
+  d.y += 3;
+  d.para('Sudhelfer ist ein privates Hobby-Projekt und steht in keiner Verbindung zu maischemalzundmehr.de. Es ist kein offizielles Angebot der Seite.', 9, true);
+  return d.build('Brauprotokoll ' + R.name);
+}
+function savePdf() {
+  var blob;
+  try { blob = buildProtocol(); } catch (e) { var o = $('#pdfout'); if (o) o.innerHTML = '<p class="err">Das PDF konnte nicht erstellt werden: ' + esc(e.message) + '</p>'; return; }
+  offerBlob(blob, 'Brauprotokoll_' + fileSafe(R.name) + '.pdf', '#pdfout');
+}
+
+/* ---------- Stammwürze-Rechner ---------- */
+function meas() { st.meas = st.meas || { dev: 'spindel', val: '', temp: '20', vol: '', target: RS.og !== null ? String(RS.og) : '' }; return st.meas; }
+function ogCalcHtml() {
+  var m = meas(), sp = m.dev === 'spindel';
+  return '<div class="calc" id="ogcalc"><strong>Rechner: Stammwürze korrigieren (optional)</strong>' +
+    '<div class="seg2" role="group" aria-label="Messgerät"><button data-act="dev" data-dev="spindel" aria-pressed="' + sp + '">Spindel (°P)</button><button data-act="dev" data-dev="refrakto" aria-pressed="' + (!sp) + '">Refraktometer (°Brix)</button></div>' +
+    '<div class="grid">' +
+    '<label for="mVal">Messwert ' + (sp ? '°P' : '°Brix') + '<input id="mVal" data-m="val" type="number" inputmode="decimal" step="0.1" min="0" max="40" value="' + esc(m.val) + '"></label>' +
+    (sp ? '<label for="mTemp">Temperatur der Probe °C<input id="mTemp" data-m="temp" type="number" inputmode="decimal" step="0.5" min="0" max="70" value="' + esc(m.temp) + '"></label>' : '') +
+    '<label for="mVol">Würze im Gärbehälter L<input id="mVol" data-m="vol" type="number" inputmode="decimal" step="0.1" min="0" max="500" value="' + esc(m.vol) + '"></label>' +
+    '<label for="mTgt">Ziel-Stammwürze °P<input id="mTgt" data-m="target" type="number" inputmode="decimal" step="0.1" min="1" max="40" value="' + esc(m.target) + '"></label>' +
+    '</div><div id="ogres" aria-live="polite">' + ogResultHtml() + '</div></div>';
+}
+function pnum(v) { var n = parseFloat(String(v === undefined ? '' : v).replace(',', '.')); return isFinite(n) ? n : null; }
+function ogResultHtml() {
+  var m = meas(), val = pnum(m.val), tgt = pnum(m.target), vol = pnum(m.vol), temp = pnum(m.temp);
+  if (val === null || !(val > 0)) return '<div class="res"><span class="meta">Gib den Messwert ein. Mit der Würzemenge rechnet die App die genauen Mengen aus.</span></div>';
+  if (!(tgt > 0)) return '<div class="res"><span class="meta">Trag die Ziel-Stammwürze ein (steht nicht im Rezept).</span></div>';
+  var p, note = [];
+  if (m.dev === 'spindel') {
+    if (temp === null) temp = 20;
+    p = hydroCorrect(val, temp, 20);
+    if (Math.abs(temp - 20) >= 0.5) note.push('Spindel auf 20 °C korrigiert: ' + fmtNum(val, 1) + ' °P bei ' + fmtNum(temp, 1) + ' °C entsprechen ' + fmtNum(p, 1) + ' °P.');
+    if (temp > 40) note.push('Für einen genauen Wert die Probe auf etwa 20 °C abkühlen lassen.');
+  } else {
+    p = brixToPlato(val, 1.03);
+    note.push(fmtNum(val, 1) + ' °Brix entsprechen ' + fmtNum(p, 1) + ' °P (Würzekorrekturfaktor 1,03, unvergorene Würze).');
+  }
+  var a = ogAdvice(p, tgt, vol && vol > 0 ? vol : null), h = '';
+  var head = '<span class="big">' + fmtNum(p, 1) + ' °P</span><span>' + (a.diff >= 0 ? '+' : '–') + fmtNum(Math.abs(a.diff), 1) + ' °P gegenüber dem Ziel ' + fmtNum(tgt, 1) + ' °P</span>';
+  if (a.status === 'ok') h = '<div class="res ok">' + head + '<strong>Passt. Du kannst die Hefe zugeben.</strong>';
+  else if (a.status === 'high') {
+    h = '<div class="res high">' + head + '<strong>' + (a.water !== undefined ? 'Verdünnen: ' + fmtNum(a.water, 1) + ' L abgekochtes, abgekühltes Wasser zugeben.' : 'Verdünnen: ' + fmtNum(a.waterPer10, 2) + ' L abgekochtes, abgekühltes Wasser je 10 L Würze.') + '</strong>' +
+      '<ul>' + (a.newVol !== undefined ? '<li>Danach ca. ' + fmtNum(a.newVol, 1) + ' L mit ' + fmtNum(tgt, 1) + ' °P.</li>' : '<li>Trag die Würzemenge ein, dann rechnet die App die genaue Wassermenge.</li>') +
+      '<li>Wasser vorher abkochen und auf Würzetemperatur abkühlen. Nach dem Mischen umrühren und nochmal messen.</li><li>Du kannst auch unverdünnt lassen: Das Bier wird dann etwas stärker.</li></ul>';
+  } else {
+    h = '<div class="res low">' + head + '<strong>Stammwürze zu niedrig. Zwei Möglichkeiten:</strong><ul>' +
+      '<li><b>So lassen:</b> Das Bier wird etwas leichter und hat etwas weniger Alkohol. Das ist die übliche Lösung bei kleinen Abweichungen.</li>' +
+      (a.sugar !== undefined
+        ? '<li><b>Aufzuckern:</b> ' + fmtNum(a.dme * 1000, 0) + ' g Trockenmalzextrakt hell oder ' + fmtNum(a.sugar * 1000, 0) + ' g Haushaltszucker. In wenig Wasser aufkochen, abkühlen, einrühren.</li>'
+        : '<li>Trag die Würzemenge ein, dann rechnet die App die Menge an Zucker bzw. Malzextrakt aus.</li>') + '</ul>';
+  }
+  return h + note.map(function (n) { return '<span class="meta">' + esc(n) + '</span>'; }).join('') + '<span class="meta">Mischkreuz nach Masse, Wasser mit 0 °P, Zucker mit 100 %, Trockenmalzextrakt mit 95 % Extrakt.</span></div>';
+}
+document.addEventListener('input', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-m'); if (!k || !st) return;
+  meas()[k] = e.target.value; save();
+  var r = $('#ogres'); if (r) r.innerHTML = ogResultHtml();
+});
+
+function allChecked() {
+  var s = steps[st.idx], c = st.checks[s.id] || [];
+  for (var i = 0; i < s.checks.length; i++) if (!c[i]) return false;
+  return !!st.confirm[s.id];
+}
+function updateOk() { var b = $('#okBtn'); if (b) b.setAttribute('aria-disabled', allChecked() ? 'false' : 'true'); }
+
+/* ---------- Timer-Takt ---------- */
+function tick(force) {
+  if (view !== 'brew') return;
+  var s = steps[st.idx];
+  var se = $('#since'); if (se && st.entered[s.id]) se.textContent = clock(now() - st.entered[s.id]).replace(/^\+/, '');
+  if (!s.timer) return;
+  var lbl = '', val = '', sub = '', btns = '', ring = false, k = s.timer.kind;
+  if (k === 'rest') {
+    var t = st.timers[s.id]; if (!t) return;
+    var rem = tRemain(t);
+    lbl = s.timer.label + (rem > 0 ? ' · verbleibend' : ' · beendet');
+    val = rem > 0 ? clock(rem) : '00:00';
+    sub = rem > 0 ? (t.start ? 'läuft' : 'pausiert') + ' · gesamt ' + fmtNum(t.dur / 60000, 1) + ' min' : 'Zeit abgelaufen seit ' + clock(-rem).replace('+', '');
+    ring = rem <= 0;
+    btns = '<button data-act="tpause">' + (t.start ? 'Pause' : 'Weiter') + '</button><button data-act="tplus">+1 min</button><button data-act="treset">Neu starten</button>';
+    if (rem <= 0 && !st.alarmed[s.id]) { st.alarmed[s.id] = true; save(); beep(); }
+  } else {
+    var b = st.boil;
+    if (k === 'boilStart') {
+      lbl = 'Kochzeit';
+      if (!b) { val = clock(s.timer.minutes * 60000); sub = 'startet mit OK'; }
+      else { val = clock(Math.max(0, tRemain(b))); sub = 'Kochzeit läuft bereits'; btns = '<button data-act="boilRestart">Kochzeit neu starten</button>'; }
+    } else if (!b) {
+      lbl = 'Kochzeit'; val = '--:--'; sub = 'Kochzeit wurde nicht gestartet'; btns = '<button data-act="boilStartNow">Jetzt starten</button>';
+    } else {
+      var br = tRemain(b);
+      if (k === 'boilAt') {
+        var to = br - s.timer.at * 60000;
+        lbl = to > 0 ? 'Zugabe in' : 'Jetzt zugeben';
+        val = to > 0 ? clock(to) : 'JETZT';
+        sub = 'Restkochzeit ' + clock(Math.max(0, br));
+        ring = to <= 0;
+        if (to <= 0 && !st.alarmed[s.id]) { st.alarmed[s.id] = true; save(); beep(); }
+      } else {
+        lbl = br > 0 ? 'Restkochzeit' : 'Kochzeit abgelaufen';
+        val = br > 0 ? clock(br) : '00:00';
+        sub = br > 0 ? 'bei 0:00 Einkochtopf ausschalten' : 'Einkochtopf jetzt ausschalten';
+        ring = br <= 0;
+        if (br <= 0 && !st.alarmed[s.id]) { st.alarmed[s.id] = true; save(); beep(); }
+      }
+      btns = '<button data-act="bpause">' + (b.start ? 'Kochzeit pausieren' : 'Kochzeit fortsetzen') + '</button><button data-act="bplus">+1 min</button>';
+    }
+  }
+  var e;
+  if ((e = $('#tlbl'))) e.textContent = lbl;
+  if ((e = $('#tval'))) e.textContent = val;
+  if ((e = $('#tsub'))) e.textContent = sub;
+  if ((e = $('#tbtns')) && (force || e.getAttribute('data-k') !== btns)) { e.innerHTML = btns; e.setAttribute('data-k', btns); }
+  if ((e = $('#ttile'))) e.classList.toggle('ring', ring);
+}
+setInterval(function () { if (st) tick(false); }, 500);
+
+/* ---------- Ablauf / Rezept ---------- */
+function showFlow() {
+  var html = '<p class="meta">Tippe auf einen Schritt, um dorthin zu springen.</p><ul class="slist">', last = '';
+  steps.forEach(function (s, i) {
+    if (s.phase !== last) { html += '<li><h3>' + esc(PH[s.phase]) + '</h3></li>'; last = s.phase; }
+    var cls = i === st.idx ? 'is-cur' : st.done[s.id] ? 'is-done' : '';
+    html += '<li><button class="' + cls + '" data-act="jump" data-i="' + i + '"><span class="n num">' + (i + 1) + '</span><span class="t">' + esc(s.title) + '</span><span class="st">' + (i === st.idx ? 'aktuell' : st.done[s.id] ? 'erledigt' : '') + '</span></button></li>';
+  });
+  sheet('Ablauf', html + '</ul>');
+}
+function showRecipe() {
+  var r = RS, html = '';
+  html += '<dl class="kv"><dt>Sorte</dt><dd>' + esc(R.style || '–') + '</dd><dt>Autor</dt><dd>' + esc(R.author || '–') + '</dd><dt>Ausschlagwürze</dt><dd>' + sv(r.batchL, 1, 'L') + '</dd><dt>Stammwürze</dt><dd>' + sv(r.og, 1, '°P') + '</dd><dt>Hauptguss / Nachguss</dt><dd>' + esc(fmtL(r.mainWater)) + ' / ' + esc(fmtL(r.spargeWater)) + '</dd>' +
+    '<dt>Gärtemperatur</dt><dd>' + esc(r.fermTemp ? r.fermTemp + ' °C' : '–') + '</dd><dt>Endvergärungsgrad</dt><dd>' + (r.attenuation !== null ? fmtNum(r.attenuation, 0) + ' %' : '–') + '</dd><dt>Karbonisierung</dt><dd>' + (r.carbonation !== null ? fmtNum(r.carbonation, 1) + ' g/l CO₂' : '–') + '</dd></dl>';
+  html += '<h3>Malz</h3><div class="items">' + r.malts.map(function (m) { return '<div class="il">' + esc(fmtAmount(m.amount, m.unit)) + '</div><div class="iv">' + esc(m.name) + '</div>'; }).join('') + '</div>';
+  html += '<h3>Hopfen und Zutaten</h3><div class="items">' + r.hops.map(function (h) { return '<div class="il">' + (h.type === 'fwh' ? 'Vorderwürze' : h.type === 'whirlpool' ? 'Whirlpool' : fmtNum(h.time, 0) + ' min') + '</div><div class="iv">' + esc(hopLabel(h)) + '</div>'; }).join('') +
+    r.boilAdds.map(function (z) { return '<div class="il">' + fmtNum(z.time, 0) + ' min</div><div class="iv">' + esc(addLabel(z)) + '</div>'; }).join('') +
+    r.dryHops.map(function (h) { return '<div class="il">Stopfen</div><div class="iv">' + esc(fmtAmount(h.amount, 'g') + ' ' + h.name) + '</div>'; }).join('') +
+    r.fermAdds.map(function (z) { return '<div class="il">Gärung</div><div class="iv">' + esc(addLabel(z)) + '</div>'; }).join('') + '</div>';
+  if (R.desc) html += '<h3>Kurzbeschreibung</h3><div class="pre">' + esc(R.desc) + '</div>';
+  if (R.note) html += '<h3>Anmerkung des Autors</h3><div class="pre">' + esc(R.note) + '</div>';
+  html += '<div class="startbar"><button class="btn" data-act="toOverviewSheet">Zur Übersicht</button><button class="btn" data-act="importSheet">Anderes Rezept laden</button></div>';
+  sheet(R.name, html);
+}
+
+/* ---------- Abschluss ---------- */
+function renderFinished() {
+  st.mode = 'finished'; view = 'finished'; renderTop();
+  var r = RS;
+  $('#view').innerHTML = '<div class="ov fin">' +
+    '<section class="card"><h2 class="rtitle">Sud abgeschlossen</h2><p class="do">Alle Schritte von ' + esc(R.name) + ' sind bestätigt. Prost!</p>' +
+    '<h3>Alkohol nach der Flaschengärung</h3>' + alcHtml() +
+    '<dl class="kv"><dt>Gärtemperatur</dt><dd>' + esc(r.fermTemp ? r.fermTemp + ' °C' : '–') + '</dd><dt>Endvergärungsgrad laut Rezept</dt><dd>' + (r.attenuation !== null ? fmtNum(r.attenuation, 0) + ' %' : '–') + '</dd><dt>Karbonisierung laut Rezept</dt><dd>' + (r.carbonation !== null ? fmtNum(r.carbonation, 1) + ' g/l CO₂' : '–') + '</dd></dl>' +
+    '<div class="startbar"><button class="btn" data-act="lastStep">' + I.back + 'Zurück zum letzten Schritt</button><button class="btn" data-act="import">' + I.upload + 'Neues Rezept laden</button></div>' +
+    '<h3>Brauprotokoll</h3><p class="meta">Rezept, kompletter Ablauf und deine Messwerte zum Ausdrucken und Abheften.</p><div class="startbar"><button class="btn primary" data-act="pdf">Brauprotokoll als PDF</button></div><div id="pdfout" class="imgout"></div>' + '<p class="meta">Sudhelfer ist ein privates Hobby-Projekt. Es steht in keiner Verbindung zu maischemalzundmehr.de und ist kein offizielles Angebot der Seite. Die Rezepte stammen von den jeweiligen Autorinnen und Autoren.<br>© 2026 Daniel Menzel · MIT-Lizenz · erstellt mit Unterstützung von Claude (Anthropic) · <a href="#lizenz" data-act="license">Lizenz anzeigen</a></p>' + '</section>' +
+    '<section class="card"><h2>Etikett</h2><div class="labelwrap"><canvas id="labelcv" width="' + LW + '" height="' + LH + '" role="img" aria-label="Vorschau Flaschenetikett"></canvas>' + labelFields() + '</div></section></div>';
+  drawLabelPreview(); fontsReady().then(drawLabelPreview);
+}
+
+/* ---------- Aktionen ---------- */
+function goNext() {
+  var s = steps[st.idx];
+  if (s.timer && s.timer.kind === 'boilStart' && !st.boil) st.boil = { dur: s.timer.minutes * 60000, start: now(), acc: 0 };
+  st.done[s.id] = true;
+  if (st.idx >= steps.length - 1) { renderFinished(); save(); return; }
+  st.idx++; enterStep(); renderBrew();
+  var t = $('#task'); if (t) t.scrollTop = 0;
+}
+function tryOk() {
+  var s = steps[st.idx];
+  if (!allChecked()) {
+    var b = $('#okBtn'); if (b) { b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); }
+    var first = document.querySelector('.task input[type=checkbox]:not(:checked)') || $('#doneChk');
+    if (first) first.closest('label').classList.add('shake');
+    return;
+  }
+  var rem = null, what = '';
+  if (s.timer) {
+    if (s.timer.kind === 'rest' && st.timers[s.id]) { rem = tRemain(st.timers[s.id]); what = 'Die Zeit für diesen Schritt läuft noch'; }
+    if (s.timer.kind === 'boilAt' && st.boil) { rem = tRemain(st.boil) - s.timer.at * 60000; what = 'Der Zugabezeitpunkt ist noch nicht erreicht'; }
+    if (s.timer.kind === 'boilEnd' && st.boil) { rem = tRemain(st.boil); what = 'Die Kochzeit läuft noch'; }
+  }
+  if (rem !== null && rem > 1500) {
+    dialog('Noch ' + clock(rem), '<p>' + what + '. Willst du den Schritt trotzdem jetzt beenden?</p>', [{ label: 'Weiter warten', primary: true }, { label: 'Trotzdem beenden', fn: goNext }]);
+    return;
+  }
+  goNext();
+}
+document.addEventListener('change', function (e) {
+  if (!st || view !== 'brew') return;
+  var s = steps[st.idx];
+  if (e.target.id === 'doneChk') { st.confirm[s.id] = e.target.checked; save(); updateOk(); }
+  var ci = e.target.getAttribute && e.target.getAttribute('data-chk');
+  if (ci !== null && ci !== undefined) { st.checks[s.id] = st.checks[s.id] || []; st.checks[s.id][+ci] = e.target.checked; save(); updateOk(); }
+  var l = e.target.closest && e.target.closest('label'); if (l) l.classList.remove('shake');
+});
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('[data-act]'); if (!a) return;
+  var act = a.getAttribute('data-act'), s = st && steps[st.idx], t;
+  audioInit();
+  switch (act) {
+    case 'import': case 'importSheet': closeSheet(); renderImport(); break;
+    case 'demo': tryLoad(JSON.stringify(DEMO), 'Beispiel', true); break;
+    case 'manualSet':
+      if (st.started) break;
+      var mL = parseFloat(String(($('#manL') || {}).value || '').replace(',', '.')), mS = $('#manS') ? parseFloat(String($('#manS').value).replace(',', '.')) : null;
+      if (!(mL > 0) || ($('#manS') && !(mS > 0 && mS <= 100))) { var bad = !(mL > 0) ? $('#manL') : $('#manS'); bad.classList.remove('shake'); void bad.offsetWidth; bad.classList.add('shake'); bad.focus(); break; }
+      st.manual = { batchL: mL, sha: mS || (st.manual && st.manual.sha) || null }; st.scaleL = null; rebuild(); save(); renderOverview(); break;
+    case 'manualReset': st.manual = null; st.scaleL = null; rebuild(); save(); renderOverview(); break;
+    case 'dev': meas().dev = a.getAttribute('data-dev'); save(); var oc = $('#ogcalc'); if (oc) oc.outerHTML = ogCalcHtml(); break;
+    case 'license': e.preventDefault(); sheet('Lizenz', '<div class="pre" style="font-family:ui-monospace,Menlo,monospace;font-size:.82rem">' + esc(LICENSE_TEXT) + '</div>'); break;
+    case 'pdf': savePdf(); break;
+    case 'saveLabel': saveLabel(false); break;
+    case 'saveSheet': saveLabel(true); break;
+    case 'qrText': useQrText($('#qrlink').value); break;
+    case 'pasteLoad': var v = $('#paste').value.trim(); if (v) tryLoad(v, 'eingefügt'); else renderImport('Das Textfeld ist leer. Füge den JSON-Text aus dem Export ein.'); break;
+    case 'cancelImport': render(); break;
+    case 'toOverviewSheet': closeSheet(); renderOverview(); save(); break;
+    case 'start': st.meas = null; st.carb = null; st.fg = null; st.alc = null; st.label = null; st.startedAt = now(); st.started = true; st.idx = 0; st.done = {}; st.checks = {}; st.confirm = {}; st.timers = {}; st.alarmed = {}; st.entered = {}; st.boil = null; enterStep(); keepAwake(); renderBrew(); break;
+    case 'resume': keepAwake(); if (st.idx >= steps.length) st.idx = steps.length - 1; renderBrew(); save(); break;
+    case 'restart': dialog('Von vorn beginnen?', '<p>Alle Häkchen und Timer werden zurückgesetzt.</p>', [{ label: 'Abbrechen' }, { label: 'Zurücksetzen', primary: true, fn: function () { st.started = false; st.idx = 0; st.done = {}; st.checks = {}; st.confirm = {}; st.timers = {}; st.alarmed = {}; st.entered = {}; st.boil = null; save(); renderOverview(); } }]); break;
+    case 'ok': tryOk(); break;
+    case 'back': if (st.idx > 0) { st.idx--; st.confirm[steps[st.idx].id] = false; save(); renderBrew(); } else { renderOverview(); save(); } break;
+    case 'flow': showFlow(); break;
+    case 'recipe': showRecipe(); break;
+    case 'closeSheet': closeSheet(); break;
+    case 'mute': st.muted = !st.muted; save(); renderTop(); break;
+    case 'jump':
+      var i = +a.getAttribute('data-i');
+      if (i === st.idx) { closeSheet(); break; }
+      dialog('Zu Schritt ' + (i + 1) + ' springen?', '<p><b>' + esc(steps[i].title) + '</b></p><p>Bestätigte Schritte bleiben bestätigt. Laufende Timer laufen weiter.</p>',
+        [{ label: 'Abbrechen' }, { label: 'Springen', primary: true, fn: function () { closeSheet(); st.idx = i; enterStep(); renderBrew(); } }]);
+      break;
+    case 'jodfail':
+      var ri = -1; steps.forEach(function (x, j) { if (x.id === s.jodRest) ri = j; });
+      if (ri < 0) { dialog('Keine Rast gefunden', '<p>Halte die Maische weitere 10 Minuten auf ' + esc(fmtT(s.temp.value)) + ' und wiederhole die Jodprobe.</p>', [{ label: 'OK', primary: true }]); break; }
+      dialog('Rast um 10 min verlängern?', '<p>Die App geht zurück zu „' + esc(steps[ri].title) + '“ und startet 10 Minuten. Danach folgt eine neue Jodprobe.</p>',
+        [{ label: 'Abbrechen' }, { label: 'Rast +10 min', primary: true, fn: function () {
+          var rs = steps[ri]; st.timers[rs.id] = { dur: 10 * 60000, start: now(), acc: 0 }; st.alarmed[rs.id] = false; st.done[rs.id] = false;
+          st.idx = ri; st.confirm[rs.id] = false; save(); renderBrew(); } }]);
+      break;
+    case 'tpause': t = st.timers[s.id]; if (t) { if (t.start) { t.acc += now() - t.start; t.start = null; } else t.start = now(); save(); tick(true); } break;
+    case 'tplus': t = st.timers[s.id]; if (t) { t.dur += 60000; if (tRemain(t) > 0) st.alarmed[s.id] = false; save(); tick(true); } break;
+    case 'treset': dialog('Timer neu starten?', '<p>Der Timer beginnt wieder bei ' + fmtNum(s.timer.minutes, 1) + ' Minuten.</p>', [{ label: 'Abbrechen' }, { label: 'Neu starten', primary: true, fn: function () { st.timers[s.id] = { dur: s.timer.minutes * 60000, start: now(), acc: 0 }; st.alarmed[s.id] = false; save(); tick(true); } }]); break;
+    case 'bpause': t = st.boil; if (t) { if (t.start) { t.acc += now() - t.start; t.start = null; } else t.start = now(); save(); tick(true); } break;
+    case 'bplus': t = st.boil; if (t) { t.dur += 60000; save(); tick(true); } break;
+    case 'boilRestart': dialog('Kochzeit neu starten?', '<p>Die Kochzeit beginnt wieder bei ' + fmtNum(RS.boilTime, 0) + ' Minuten. Alle Zugabezeitpunkte verschieben sich.</p>', [{ label: 'Abbrechen' }, { label: 'Neu starten', primary: true, fn: function () { st.boil = { dur: RS.boilTime * 60000, start: now(), acc: 0 }; steps.forEach(function (x) { if (x.phase === 'boil') st.alarmed[x.id] = false; }); save(); tick(true); } }]); break;
+    case 'boilStartNow': st.boil = { dur: RS.boilTime * 60000, start: now(), acc: 0 }; save(); tick(true); break;
+    case 'lastStep': st.idx = steps.length - 1; st.confirm[steps[st.idx].id] = false; renderBrew(); save(); break;
+  }
+});
+
+/* Tooltips der Diagramme */
+function tipMove(e) {
+  var tip = $('#tip'), el = e.target.closest && e.target.closest('[data-tip]');
+  if (!el) { tip.hidden = true; return; }
+  tip.textContent = el.getAttribute('data-tip'); tip.hidden = false;
+  var x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8), y = e.clientY + 16;
+  if (y + tip.offsetHeight > window.innerHeight - 8) y = e.clientY - tip.offsetHeight - 10;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+document.addEventListener('pointermove', tipMove);
+document.addEventListener('pointerdown', tipMove);
+
+/* ---------- Start ---------- */
+function render() {
+  if (st.mode === 'brew') { if (!st.started) st.mode = 'overview'; else { renderBrew(); return; } }
+  if (st.mode === 'finished') { renderFinished(); return; }
+  renderOverview();
+}
+function boot(data) {
+  st = (data && data.raw) ? data : load();
+  try { if (st && st.raw) rebuild(); else throw 0; }
+  catch (e) { st = fresh(JSON.stringify(DEMO), 'Beispiel', true); rebuild(); }
+  if (st.mode === 'import') st.mode = 'overview';
+  if (st.demo && !st.started) { st.raw = JSON.stringify(DEMO); rebuild(); save(); }
+  render();
+  if (window.claude && window.claude.hot) window.claude.hot.snapshot(function () { return st; });
+}
+if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot);
+else boot(window.claude && window.claude.hot && window.claude.hot.data || {});
+})();
+</script>
+</body>
+</html>
