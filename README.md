@@ -2,7 +2,7 @@
 
 Eine Web-App, die Hobbybrauer Schritt für Schritt durch einen Brautag im Einkochtopf führt: vom Einmaischen bis zum Abfüllen. Sie liest Rezepte von [maischemalzundmehr.de](https://www.maischemalzundmehr.de/) sowie BeerXML- und BeerJSON-Dateien und macht daraus einen eindeutigen Ablauf mit großer Zieltemperatur, Rühranzeige, Timern und Bestätigung jedes Schritts.
 
-Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Browser auf Laptop, iPad und Handy, auch offline, und ruft von sich aus keine externen Adressen auf.
+Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Browser auf Laptop, Tablet und Handy, auch offline, und ruft von sich aus keine externen Adressen auf.
 
 > **Hinweis:** Sudhelfer ist ein privates Hobby-Projekt. Es steht in keiner Verbindung zu maischemalzundmehr.de und ist kein offizielles Angebot der Seite. Die Rezepte stammen von den jeweiligen Autorinnen und Autoren.
 
