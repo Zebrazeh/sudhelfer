@@ -44,7 +44,7 @@ Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Brow
 
 ## Benutzung
 
-1. `index.html` herunterladen und im Browser öffnen.
+1. **[sudhelfer.html herunterladen](https://github.com/Zebrazeh/sudhelfer/releases/latest/download/sudhelfer.html)** und im Browser öffnen. Danach läuft die App auch offline.
 2. Rezept laden: Datei wählen, Text einfügen oder QR-Code scannen.
 3. Übersicht prüfen, die Hinweise zum Rezept lesen, auf **Start** tippen.
 
