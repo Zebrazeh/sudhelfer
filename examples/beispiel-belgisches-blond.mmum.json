@@ -1,0 +1,93 @@
+{
+  "Rezeptquelle": "Beispiel (selbst zusammengestellt, kein Rezept von maischemalzundmehr.de)",
+  "ExportVersion": "2.0",
+  "Name": "Beispiel: Belgisches Blond",
+  "Datum": "08.11.2026",
+  "Sorte": "Belgian Blond Ale",
+  "Autor": "Sudhelfer Demo",
+  "Ausschlagwuerze": 20,
+  "Sudhausausbeute": 65,
+  "Stammwuerze": 15.3,
+  "Bittere": 25,
+  "Farbe": 9,
+  "Alkohol": 6.9,
+  "Kurzbeschreibung": "Goldenes, fruchtiges belgisches Blond mit trockenem Abgang. Selbst zusammengestelltes Beispiel zum Ausprobieren der App. Für deinen Brautag lade dein eigenes Rezept.",
+  "Malze": [
+    {
+      "Name": "Pilsner Malz",
+      "Menge": 3.65,
+      "Einheit": "kg"
+    },
+    {
+      "Name": "Weizenmalz hell",
+      "Menge": 300,
+      "Einheit": "g"
+    },
+    {
+      "Name": "Münchner Malz hell",
+      "Menge": 300,
+      "Einheit": "g"
+    }
+  ],
+  "Maischform": "infusion",
+  "Hauptguss": 15,
+  "Einmaischtemperatur": 66,
+  "Rasten": [
+    {
+      "Temperatur": 63,
+      "Zeit": 45
+    },
+    {
+      "Temperatur": 72,
+      "Zeit": 20
+    }
+  ],
+  "Abmaischtemperatur": 78,
+  "Nachguss": 14,
+  "Kochzeit_Wuerze": 80,
+  "Hopfenkochen": [
+    {
+      "Sorte": "Saazer",
+      "Menge": 15,
+      "Alpha": 3.5,
+      "Zeit": 0,
+      "Typ": "Vorderwuerze"
+    },
+    {
+      "Sorte": "Magnum",
+      "Menge": 11,
+      "Alpha": 12,
+      "Zeit": 80,
+      "Typ": "Standard"
+    },
+    {
+      "Sorte": "Saazer",
+      "Menge": 20,
+      "Alpha": 3.5,
+      "Zeit": 15,
+      "Typ": "Standard"
+    },
+    {
+      "Sorte": "Saazer",
+      "Menge": 25,
+      "Alpha": 3.5,
+      "Zeit": 0,
+      "Typ": "Whirlpool"
+    }
+  ],
+  "Stopfhopfen": [],
+  "Hefe": "SafAle BE-256, 1 Päckchen (11,5 g)",
+  "Gaertemperatur": "18-22",
+  "Endvergaerungsgrad": 82,
+  "Karbonisierung": 5.5,
+  "WeitereZutatGaerung": [],
+  "Gewuerze_etc": [
+    {
+      "Name": "Kandiszucker hell",
+      "Menge": 350,
+      "Einheit": "g",
+      "Kochzeit": 10
+    }
+  ],
+  "Anmerkung_Autor": "Beispielrezept zum Ausprobieren der App. Werte nachgerechnet: 15,3 °P (1.062), ca. 25 IBU, ca. 9 EBC, 6,9 % vol vor und ca. 7,4 % vol nach der Flaschengärung mit 5,5 g/l CO2. Alpha-Werte deines Hopfens prüfen und Mengen bei Abweichung anpassen. Kandiszucker kann durch die gleiche Menge Haushaltszucker ersetzt werden. Nach Gärende 1 Woche bei Gärtemperatur reifen lassen, erst bei gleichbleibendem Restextrakt (ca. 2,7 °P) abfüllen."
+}

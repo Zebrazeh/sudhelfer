@@ -1,0 +1,17 @@
+{"beerjson":{"version":1.0,"recipes":[{"name":"Test Pale Ale","type":"all grain","author":"Tester","created":"2025-06-01",
+"batch_size":{"unit":"l","value":21},"efficiency":{"brewhouse":{"unit":"%","value":72}},"style":{"name":"American Pale Ale"},
+"original_gravity":{"unit":"sg","value":1.050},"final_gravity":{"unit":"sg","value":1.011},"alcohol_by_volume":{"unit":"%","value":5.1},
+"color_estimate":{"unit":"SRM","value":6},"carbonation":2.4,"notes":"Kalthopfen 4 Tage.",
+"boil":{"pre_boil_size":{"unit":"l","value":26},"boil_time":{"unit":"min","value":60}},
+"mash":{"name":"Single","grain_temperature":{"unit":"C","value":20},"mash_steps":[
+ {"name":"Mash In","type":"infusion","amount":{"unit":"l","value":16},"step_temperature":{"unit":"C","value":67},"step_time":{"unit":"min","value":60},"infuse_temperature":{"unit":"C","value":72}},
+ {"name":"Mash Out","type":"temperature","step_temperature":{"unit":"C","value":78},"step_time":{"unit":"min","value":10}},
+ {"name":"Sparge","type":"sparge","amount":{"unit":"l","value":14},"step_temperature":{"unit":"C","value":78}}]},
+"fermentation":{"name":"Ale","fermentation_steps":[{"name":"Primary","start_temperature":{"unit":"C","value":18},"end_temperature":{"unit":"C","value":20},"step_time":{"unit":"day","value":10}}]},
+"ingredients":{
+ "fermentable_additions":[{"name":"Pale Ale Malt","type":"grain","color":{"unit":"EBC","value":6},"amount":{"unit":"kg","value":4.2}},{"name":"Cara Munich","type":"grain","amount":{"unit":"g","value":300}}],
+ "hop_additions":[{"name":"Magnum","alpha_acid":{"unit":"%","value":12},"amount":{"unit":"g","value":12},"timing":{"use":"add_to_boil","duration":{"unit":"min","value":60}}},
+  {"name":"Cascade","alpha_acid":{"unit":"%","value":6},"amount":{"unit":"oz","value":1},"timing":{"use":"add_to_boil","duration":{"unit":"min","value":0}}},
+  {"name":"Cascade","alpha_acid":{"unit":"%","value":6},"amount":{"unit":"g","value":40},"timing":{"use":"add_to_fermentation","time":{"unit":"day","value":4},"duration":{"unit":"day","value":4}}}],
+ "miscellaneous_additions":[{"name":"Whirlfloc","type":"fining","amount":{"unit":"g","value":2},"timing":{"use":"add_to_boil","duration":{"unit":"min","value":10}}}],
+ "culture_additions":[{"name":"US-05","producer":"Fermentis","product_id":"US-05","type":"ale","form":"dry","attenuation":{"unit":"%","value":80}}]}}]}}
