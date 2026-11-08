@@ -22,15 +22,11 @@ Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Brow
 
 ## Benutzung
 
-1. `index.html` herunterladen und im Browser öffnen, oder die App über GitHub Pages bereitstellen (siehe unten).
+1. `index.html` herunterladen und im Browser öffnen.
 2. Rezept laden: Datei wählen, Text einfügen oder QR-Code scannen.
 3. Übersicht prüfen, die Hinweise zum Rezept lesen, auf **Start** tippen.
 
 Zum Ausprobieren lädt die App beim ersten Öffnen ein selbst zusammengestelltes Beispielrezept (Belgisches Blond). Weitere Beispieldateien liegen in [`examples/`](examples/).
-
-### Über GitHub Pages bereitstellen
-
-Unter *Settings → Pages* als Quelle den Branch `main` und den Ordner `/ (root)` wählen. Danach ist die App unter `https://<benutzer>.github.io/<repository>/` erreichbar.
 
 ## Sicherheit
 
