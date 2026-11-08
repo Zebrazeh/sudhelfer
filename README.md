@@ -24,7 +24,7 @@ Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Brow
 
 <img src="docs/screenshots/3-kochen-tablet.png" alt="Hopfengabe beim Kochen auf dem Tablet" width="800">
 
-**Abschluss** mit Alkohol nach der Flaschengärung und Flaschenetikett:
+**Nach dem Abfüllen:** Alkoholgehalt nach der Flaschengärung berechnen und Flaschenetikett drucken:
 
 <img src="docs/screenshots/5-abschluss-etikett-laptop.png" alt="Abschluss mit Alkoholberechnung und Etikett" width="800">
 
