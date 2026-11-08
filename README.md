@@ -2,7 +2,7 @@
 
 Eine Web-App, die Hobbybrauer Schritt für Schritt durch einen Brautag im Einkochtopf führt: vom Einmaischen bis zum Abfüllen. Sie liest Rezepte von [maischemalzundmehr.de](https://www.maischemalzundmehr.de/) sowie BeerXML- und BeerJSON-Dateien und macht daraus einen eindeutigen Ablauf mit gut lesbarer Anzeige der Zieltemperatur, Rühranzeige, Timern und Bestätigung jedes Schritts.
 
-Die ganze App ist **eine einzige HTML-Datei** (`index.html`). Sie läuft im Browser auf Laptop, Tablet und Handy, auch offline, und ruft von sich aus keine externen Adressen auf.
+Die ganze App ist **eine einzige HTML-Datei**: **[sudhelfer.html herunterladen](https://github.com/Zebrazeh/sudhelfer/releases/latest/download/sudhelfer.html)**. Sie läuft im Browser auf Laptop, Tablet und Handy, auch offline, und ruft von sich aus keine externen Adressen auf.
 
 > **Hinweis:** Sudhelfer ist ein privates Hobby-Projekt. Es steht in keiner Verbindung zu maischemalzundmehr.de und ist kein offizielles Angebot der Seite. Die Rezepte stammen von den jeweiligen Autorinnen und Autoren.
 
@@ -58,7 +58,7 @@ Flaschengärung kann gefährlich sein: Zu viel Zucker oder nicht endvergorenes B
 
 | Datei | Inhalt |
 |---|---|
-| `index.html` | fertige App (wird von `build.py` erzeugt) |
+| `index.html` | fertige App, wird von `build.py` erzeugt (zum Benutzen den Download oben nehmen, der ist dieselbe Datei) |
 | `src/app.html` | Oberfläche, Stile, Rechner, PDF- und Etikett-Erzeugung |
 | `src/core.js` | Rezept-Import (maischemalzundmehr.de, BeerXML, BeerJSON) und Erzeugung der Brauschritte |
 | `vendor/jsQR-1.4.0.js` | QR-Erkennung, unverändert übernommen |
